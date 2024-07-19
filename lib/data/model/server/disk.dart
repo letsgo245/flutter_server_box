@@ -1,10 +1,10 @@
-import 'package:toolbox/core/extension/numx.dart';
-import 'package:toolbox/data/model/server/time_seq.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:server_box/data/model/server/time_seq.dart';
 
 import '../../res/misc.dart';
 
 class Disk {
-  final String dev;
+  final String fs;
   final String mount;
   final int usedPercent;
   final BigInt used;
@@ -12,7 +12,7 @@ class Disk {
   final BigInt avail;
 
   const Disk({
-    required this.dev,
+    required this.fs,
     required this.mount,
     required this.usedPercent,
     required this.used,
@@ -20,12 +20,6 @@ class Disk {
     required this.avail,
   });
 
-  /// raw:
-  /// ```
-  /// Filesystem           1K-blocks      Used Available Use% Mounted on
-  /// overlay              959122528 154470540 755857572  17% /
-  /// tmpfs                    65536         0     65536   0% /dev
-  /// ```
   static List<Disk> parse(String raw) {
     final list = <Disk>[];
     final items = raw.split('\n');
@@ -35,7 +29,7 @@ class Disk {
       if (item.isEmpty) {
         continue;
       }
-      final vals = item.split(Miscs.numReg);
+      final vals = item.split(Miscs.blankReg);
       if (vals.length == 1) {
         pathCache = vals[0];
         continue;
@@ -45,13 +39,16 @@ class Disk {
         pathCache = '';
       }
       try {
+        final fs = vals[0];
+        final mount = vals[5];
+        if (!_shouldCalc(fs, mount)) continue;
         list.add(Disk(
-          dev: vals[0],
-          mount: vals[5],
+          fs: fs,
+          mount: mount,
           usedPercent: int.parse(vals[4].replaceFirst('%', '')),
-          used: BigInt.tryParse(vals[2]) ?? BigInt.zero,
-          size: BigInt.tryParse(vals[1]) ?? BigInt.one,
-          avail: BigInt.tryParse(vals[3]) ?? BigInt.one,
+          used: BigInt.parse(vals[2]),
+          size: BigInt.parse(vals[1]),
+          avail: BigInt.parse(vals[3]),
         ));
       } catch (e) {
         continue;
@@ -59,24 +56,29 @@ class Disk {
     }
     return list;
   }
+
+  @override
+  String toString() {
+    return 'Disk{dev: $fs, mount: $mount, usedPercent: $usedPercent, used: $used, size: $size, avail: $avail}';
+  }
 }
 
-class DiskIO extends TimeSeq<DiskIOPiece> {
-  DiskIO(super.pre, super.now);
+class DiskIO extends TimeSeq<List<DiskIOPiece>> {
+  DiskIO(super.init1, super.init2);
+
+  @override
+  void onUpdate() {
+    cachedAllSpeed = _getAllSpeed();
+  }
 
   (double?, double?) _getSpeed(String dev) {
-    final pres = this.pre.where(
-          (element) => element.dev == dev.replaceFirst('/dev/', ''),
-        );
-    final nows = this.now.where(
-          (element) => element.dev == dev.replaceFirst('/dev/', ''),
-        );
-    if (pres.isEmpty || nows.isEmpty) return (null, null);
-    final pre = pres.first;
-    final now = nows.first;
-    final sectorsRead = now.sectorsRead - pre.sectorsRead;
-    final sectorsWrite = now.sectorsWrite - pre.sectorsWrite;
-    final time = now.time - pre.time;
+    if (dev.startsWith('/dev/')) dev = dev.substring(5);
+    final old = pre.firstWhereOrNull((e) => e.dev == dev);
+    final new_ = now.firstWhereOrNull((e) => e.dev == dev);
+    if (old == null || new_ == null) return (null, null);
+    final sectorsRead = new_.sectorsRead - old.sectorsRead;
+    final sectorsWrite = new_.sectorsWrite - old.sectorsWrite;
+    final time = new_.time - old.time;
     final read = sectorsRead / time * 512;
     final write = sectorsWrite / time * 512;
     return (read, write);
@@ -90,11 +92,20 @@ class DiskIO extends TimeSeq<DiskIOPiece> {
     return (read, write);
   }
 
-  (String?, String?) getAllSpeed() {
+  (String?, String?) cachedAllSpeed = (null, null);
+  (String?, String?) _getAllSpeed() {
     if (pre.isEmpty || now.isEmpty) return (null, null);
     var (read, write) = (0.0, 0.0);
-    for (var pre in pre) {
-      final (read_, write_) = _getSpeed(pre.dev);
+    for (var item in pre) {
+      /// Issue #314
+      /// Only calc nvme, sd, vd, hd, mmcblk, sr
+      if (!item.dev.startsWith('nvme') &&
+          !item.dev.startsWith('sd') &&
+          !item.dev.startsWith('vd') &&
+          !item.dev.startsWith('hd') &&
+          !item.dev.startsWith('mmcblk') &&
+          !item.dev.startsWith('sr')) continue;
+      final (read_, write_) = _getSpeed(item.dev);
       read += read_ ?? 0;
       write += write_ ?? 0;
     }
@@ -103,18 +114,6 @@ class DiskIO extends TimeSeq<DiskIOPiece> {
     return (readStr, writeStr);
   }
 
-  // Raw:
-  //  254       0 vda 584193 186416 40419294 845790 5024458 2028159 92899586 6997559 0 5728372 8143590 0 0 0 0 2006112 300240
-  //  254       1 vda1 584029 186416 40412734 845668 5024453 2028159 92899586 6997558 0 5728264 7843226 0 0 0 0 0 0
-  //   11       0 sr0 36 0 280 49 0 0 0 0 0 56 49 0 0 0 0 0 0
-  //    7       0 loop0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       1 loop1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       2 loop2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       3 loop3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       4 loop4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       5 loop5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       6 loop6 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-  //    7       7 loop7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
   static List<DiskIOPiece> parse(String raw, int time) {
     final lines = raw.split('\n');
     if (lines.isEmpty) return [];
@@ -158,25 +157,40 @@ class DiskIOPiece extends TimeSeqIface<DiskIOPiece> {
   bool same(DiskIOPiece other) => dev == other.dev;
 }
 
-/// Issue 88
-///
-/// Due to performance issues,
-/// if there is no `Disk.loc == '/' || Disk.loc == '/sysroot'`,
-/// return the first [Disk] of [disks].
-///
-/// If we find out the biggest [Disk] of [disks],
-/// the fps may lower than 60.
-Disk? findRootDisk(List<Disk> disks) {
-  if (disks.isEmpty) return null;
-  final roots = disks.where((element) => element.mount == '/');
-  if (roots.isEmpty) {
-    final sysRoots = disks.where((element) => element.mount == '/sysroot');
-    if (sysRoots.isEmpty) {
-      return disks.first;
-    } else {
-      return sysRoots.first;
+class DiskUsage {
+  final BigInt used;
+  final BigInt size;
+
+  DiskUsage({
+    required this.used,
+    required this.size,
+  });
+
+  double get usedPercent => used / size * 100;
+
+  /// Find all devs, add their used and size
+  static DiskUsage parse(List<Disk> disks) {
+    final devs = <String>{};
+    var used = BigInt.zero;
+    var size = BigInt.zero;
+    for (var disk in disks) {
+      if (!_shouldCalc(disk.fs, disk.mount)) continue;
+      if (devs.contains(disk.fs)) continue;
+      devs.add(disk.fs);
+      used += disk.used;
+      size += disk.size;
     }
-  } else {
-    return roots.first;
+    return DiskUsage(used: used, size: size);
   }
+}
+
+bool _shouldCalc(String fs, String mount) {
+  if (fs.startsWith('/dev')) return true;
+  // Some NAS may have mounted path like this `//192.168.1.2/`
+  if (fs.startsWith('//')) return true;
+  if (mount.startsWith('/mnt')) return true;
+  // if (fs.startsWith('shm') ||
+  //     fs.startsWith('overlay') ||
+  //     fs.startsWith('tmpfs')) return false;
+  return false;
 }

@@ -1,21 +1,18 @@
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/extension/order.dart';
-import 'package:toolbox/data/res/store.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/res/store.dart';
 
 import '../../../data/model/server/snippet.dart';
-import '../../../data/res/ui.dart';
-import '../../widget/tag.dart';
 import '/core/route.dart';
 import '/data/provider/snippet.dart';
-import '../../widget/cardx.dart';
 
 class SnippetListPage extends StatefulWidget {
   const SnippetListPage({super.key});
 
   @override
-  _SnippetListPageState createState() => _SnippetListPageState();
+  State<SnippetListPage> createState() => _SnippetListPageState();
 }
 
 class _SnippetListPageState extends State<SnippetListPage> {
@@ -34,9 +31,9 @@ class _SnippetListPageState extends State<SnippetListPage> {
     return Scaffold(
       body: _buildBody(),
       floatingActionButton: FloatingActionButton(
-        heroTag: 'snippet',
+        heroTag: 'snippetAdd',
         child: const Icon(Icons.add),
-        onPressed: () => AppRoute.snippetEdit().go(context),
+        onPressed: () => AppRoutes.snippetEdit().go(context),
       ),
     );
   }
@@ -59,9 +56,9 @@ class _SnippetListPageState extends State<SnippetListPage> {
           itemCount: filtered.length,
           onReorder: (oldIdx, newIdx) => setState(() {
             provider.snippets.moveByItem(
-              filtered,
               oldIdx,
               newIdx,
+              filtered: filtered,
               onMove: (p0) {
                 Stores.setting.snippetOrder.put(p0.map((e) => e.name).toList());
               },
@@ -71,7 +68,6 @@ class _SnippetListPageState extends State<SnippetListPage> {
             tags: provider.tags,
             onTagChanged: (tag) => setState(() => _tag = tag),
             initTag: _tag,
-            all: l10n.all,
             width: _media.size.width,
           ),
           footer: UIs.height77,
@@ -109,7 +105,7 @@ class _SnippetListPageState extends State<SnippetListPage> {
           children: [
             IconButton(
               onPressed: () =>
-                  AppRoute.snippetEdit(snippet: snippet).go(context),
+                  AppRoutes.snippetEdit(snippet: snippet).go(context),
               icon: const Icon(Icons.edit),
             ),
           ],
@@ -129,7 +125,7 @@ class _SnippetListPageState extends State<SnippetListPage> {
   //   final ids = servers.map((e) => e.spi.id).toList();
   //   final results = await Pros.server.runSnippetsMulti(ids, snippet);
   //   if (results.isNotEmpty) {
-  //     AppRoute.snippetResult(results: results).go(context);
+  //     AppRoutes.snippetResult(results: results).go(context);
   //   }
   // }
 }

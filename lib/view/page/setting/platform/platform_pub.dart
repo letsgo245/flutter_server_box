@@ -1,10 +1,8 @@
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/utils/platform/auth.dart';
-import 'package:toolbox/data/res/store.dart';
-import 'package:toolbox/data/res/ui.dart';
-import 'package:toolbox/view/widget/future_widget.dart';
-import 'package:toolbox/view/widget/store_switch.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/res/store.dart';
+import 'package:window_manager/window_manager.dart';
 
 abstract final class PlatformPublicSettings {
   static Widget buildBioAuth() {
@@ -36,7 +34,7 @@ abstract final class PlatformPublicSettings {
                       return;
                     }
                     // Only auth when turn off (val == false)
-                    final result = await BioAuth.auth(l10n.authRequired);
+                    final result = await BioAuth.goWithResult();
                     // If failed, turn on again
                     if (result != AuthResult.success) {
                       Stores.setting.useBioAuth.put(true);
@@ -46,6 +44,51 @@ abstract final class PlatformPublicSettings {
               : null,
         );
       },
+    );
+  }
+
+  static Widget buildSaveWindowSize() {
+    final isBusy = false.vn;
+    // Only show [FadeIn] when previous state is busy.
+    var lastIsBusy = false;
+    final prop = Stores.setting.windowSize;
+
+    return ListTile(
+      title: Text(l10n.rememberWindowSize),
+
+      /// Copied from `fl_build/view/store_switch`
+      trailing: ValBuilder(
+        listenable: isBusy,
+        builder: (busy) {
+          return ValBuilder(
+            listenable: prop.listenable(),
+            builder: (value) {
+              if (busy) {
+                lastIsBusy = true;
+                return UIs.centerSizedLoadingSmall.paddingOnly(right: 17);
+              }
+
+              final switcher = Switch(
+                value: value.isNotEmpty,
+                onChanged: (value) async {
+                  isBusy.value = true;
+                  final size = await windowManager.getSize();
+                  isBusy.value = false;
+                  prop.put(size.toIntStr());
+                },
+              );
+
+              if (lastIsBusy) {
+                final ret = FadeIn(child: switcher);
+                lastIsBusy = false;
+                return ret;
+              }
+
+              return switcher;
+            },
+          );
+        },
+      ),
     );
   }
 }

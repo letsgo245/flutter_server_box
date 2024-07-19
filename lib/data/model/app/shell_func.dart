@@ -1,11 +1,7 @@
+import 'package:server_box/core/extension/context/locale.dart';
+
 import '../../res/build_data.dart';
 import '../server/system.dart';
-
-const seperator = 'SrvBoxSep';
-
-/// The suffix `\t` is for formatting
-const _cmdDivider = '\necho $seperator\n\t';
-const _homeVar = '\$HOME';
 
 enum ShellFunc {
   status,
@@ -16,29 +12,17 @@ enum ShellFunc {
   suspend,
   ;
 
-  static const _srvBoxDir = '.config/server_box';
-  static const _scriptFile = 'mobile_v${BuildData.script}.sh';
+  static const seperator = 'SrvBoxSep';
 
-  /// Issue #159
-  ///
-  /// Use script commit count as version of shell script.
-  ///
-  /// So different version of app can run at the same time.
-  ///
-  /// **Can't** use it in SFTP, because SFTP can't recognize `$HOME`
-  static String getShellPath(String home) => '$home/$_srvBoxDir/$_scriptFile';
+  /// The suffix `\t` is for formatting
+  static const cmdDivider = '\necho $seperator\n\t';
 
-  static const srvBoxDir = '$_homeVar/$_srvBoxDir';
-  static const _installShellPath = '$_homeVar/$_srvBoxDir/$_scriptFile';
-
-  /// Issue #168
-  /// Use `sh` for compatibility
-  static final installShellCmd = """
-mkdir -p $_homeVar/$_srvBoxDir
-cat << 'EOF' > $_installShellPath
-${ShellFunc.allScript}
-EOF
-chmod +x $_installShellPath
+  /// srvboxm -> ServerBox Mobile
+  static const scriptFile = 'srvboxm_v${BuildData.script}.sh';
+  static const scriptPath = '/dev/shm/$scriptFile';
+  static const installShellCmd = """
+cat > $scriptPath
+chmod 744 $scriptPath
 """;
 
   String get flag {
@@ -58,7 +42,7 @@ chmod +x $_installShellPath
     }
   }
 
-  String get exec => 'sh $_installShellPath -$flag';
+  String get exec => 'sh $scriptPath -$flag';
 
   String get name {
     switch (this) {
@@ -66,7 +50,6 @@ chmod +x $_installShellPath
         return 'status';
       // case ShellFunc.docker:
       //   // `dockeR` -> avoid conflict with `docker` command
-      //   // 以防止循环递归
       //   return 'dockeR';
       case ShellFunc.process:
         return 'process';
@@ -84,9 +67,9 @@ chmod +x $_installShellPath
       case ShellFunc.status:
         return '''
 if [ "\$macSign" = "" ] && [ "\$bsdSign" = "" ]; then
-\t${_statusCmds.join(_cmdDivider)}
+\t${StatusCmdType.values.map((e) => e.cmd).join(cmdDivider)}
 else
-\t${_bsdStatusCmd.join(_cmdDivider)}
+\t${BSDStatusCmdType.values.map((e) => e.cmd).join(cmdDivider)}
 fi''';
 //       case ShellFunc.docker:
 //         return '''
@@ -132,7 +115,7 @@ fi''';
     }
   }
 
-  static final String allScript = () {
+  static String allScript(Map<String, String>? customCmds) {
     final sb = StringBuffer();
     sb.write('''
 #!/bin/sh
@@ -150,12 +133,23 @@ isBusybox=\$(ls -l /bin/sh | grep "busybox")
 
 userId=\$(id -u)
 
+exec 2>/dev/null
+
 ''');
     // Write each func
     for (final func in values) {
+      final customCmdsStr = () {
+        if (func == ShellFunc.status &&
+            customCmds != null &&
+            customCmds.isNotEmpty) {
+          return '$cmdDivider\n\t${customCmds.values.join(cmdDivider)}';
+        }
+        return '';
+      }();
       sb.write('''
 ${func.name}() {
 ${func._cmd.split('\n').map((e) => '\t$e').join('\n')}
+$customCmdsStr
 }
 
 ''');
@@ -176,7 +170,7 @@ ${func._cmd.split('\n').map((e) => '\t$e').join('\n')}
     ;;
 esac''');
     return sb.toString();
-  }();
+  }
 }
 
 extension EnumX on Enum {
@@ -187,67 +181,54 @@ extension EnumX on Enum {
 }
 
 enum StatusCmdType {
-  echo,
-  time,
-  net,
-  sys,
-  cpu,
-  uptime,
-  conn,
-  disk,
-  mem,
-  tempType,
-  tempVal,
-  host,
-  diskio,
-  battery,
-  nvidia,
+  echo._('echo ${SystemType.linuxSign}'),
+  time._('date +%s'),
+  net._('cat /proc/net/dev'),
+  sys._('cat /etc/*-release | grep PRETTY_NAME'),
+  cpu._('cat /proc/stat | grep cpu'),
+  uptime._('uptime'),
+  conn._('cat /proc/net/snmp'),
+  disk._('df'),
+  mem._("cat /proc/meminfo | grep -E 'Mem|Swap'"),
+  tempType._('cat /sys/class/thermal/thermal_zone*/type'),
+  tempVal._('cat /sys/class/thermal/thermal_zone*/temp'),
+  host._('cat /etc/hostname'),
+  diskio._('cat /proc/diskstats'),
+  battery._(
+      'for f in /sys/class/power_supply/*/uevent; do cat "\$f"; echo; done'),
+  nvidia._('nvidia-smi -q -x'),
+  sensors._('sensors'),
   ;
-}
 
-/// Cmds for linux server
-const _statusCmds = [
-  'echo $linuxSign',
-  'date +%s',
-  'cat /proc/net/dev',
-  'cat /etc/*-release | grep PRETTY_NAME',
-  'cat /proc/stat | grep cpu',
-  'uptime',
-  'cat /proc/net/snmp',
-  'df',
-  "cat /proc/meminfo | grep -E 'Mem|Swap'",
-  'cat /sys/class/thermal/thermal_zone*/type',
-  'cat /sys/class/thermal/thermal_zone*/temp',
-  'hostname',
-  'cat /proc/diskstats',
-  'for f in /sys/class/power_supply/*/uevent; do cat "\$f"; echo; done',
-  'nvidia-smi -q -x',
-];
+  final String cmd;
+
+  const StatusCmdType._(this.cmd);
+}
 
 enum BSDStatusCmdType {
-  echo,
-  time,
-  net,
-  sys,
-  cpu,
-  uptime,
-  disk,
-  mem,
+  echo._('echo ${SystemType.bsdSign}'),
+  time._('date +%s'),
+  net._('netstat -ibn'),
+  sys._('uname -or'),
+  cpu._('top -l 1 | grep "CPU usage"'),
+  uptime._('uptime'),
+  disk._('df -k'),
+  mem._('top -l 1 | grep PhysMem'),
   //temp,
-  host,
+  host._('hostname'),
   ;
+
+  final String cmd;
+
+  const BSDStatusCmdType._(this.cmd);
 }
 
-/// Cmds for BSD server
-const _bsdStatusCmd = [
-  'echo $bsdSign',
-  'date +%s',
-  'netstat -ibn',
-  'uname -or',
-  'top -l 1 | grep "CPU usage"',
-  'uptime',
-  'df -k',
-  'top -l 1 | grep PhysMem',
-  //'sysctl -a | grep temperature',
-  'hostname',
-];
+extension StatusCmdTypeX on StatusCmdType {
+  String get i18n => switch (this) {
+        StatusCmdType.sys => l10n.system,
+        StatusCmdType.host => l10n.host,
+        StatusCmdType.uptime => l10n.uptime,
+        StatusCmdType.battery => l10n.battery,
+        final val => val.name,
+      };
+}

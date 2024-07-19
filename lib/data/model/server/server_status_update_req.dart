@@ -1,8 +1,9 @@
-import 'package:toolbox/data/model/server/battery.dart';
-import 'package:toolbox/data/model/server/nvdia.dart';
-import 'package:toolbox/data/model/server/server.dart';
-import 'package:toolbox/data/model/server/system.dart';
-import 'package:toolbox/data/res/logger.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:server_box/data/model/server/battery.dart';
+import 'package:server_box/data/model/server/nvdia.dart';
+import 'package:server_box/data/model/server/sensors.dart';
+import 'package:server_box/data/model/server/server.dart';
+import 'package:server_box/data/model/server/system.dart';
 
 import '../app/shell_func.dart';
 import 'cpu.dart';
@@ -15,11 +16,13 @@ class ServerStatusUpdateReq {
   final ServerStatus ss;
   final List<String> segments;
   final SystemType system;
+  final Map<String, String> customCmds;
 
   const ServerStatusUpdateReq({
     required this.system,
     required this.ss,
     required this.segments,
+    required this.customCmds,
   });
 }
 
@@ -42,7 +45,7 @@ Future<ServerStatus> _getLinuxStatus(ServerStatusUpdateReq req) async {
     final net = NetSpeed.parse(StatusCmdType.net.find(segments), time);
     req.ss.netSpeed.update(net);
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
@@ -53,27 +56,32 @@ Future<ServerStatus> _getLinuxStatus(ServerStatusUpdateReq req) async {
       req.ss.more[StatusCmdType.sys] = sys;
     }
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
-    final host = StatusCmdType.host.find(segments);
-    if (host.isNotEmpty) {
+    final host = _parseHostName(StatusCmdType.host.find(segments));
+    if (host != null) {
       req.ss.more[StatusCmdType.host] = host;
     }
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
-    final cpus = OneTimeCpuStatus.parse(StatusCmdType.cpu.find(segments));
+    final cpus = SingleCpuCore.parse(StatusCmdType.cpu.find(segments));
     req.ss.cpu.update(cpus);
+  } catch (e, s) {
+    Loggers.app.warning(e, s);
+  }
+
+  try {
     req.ss.temps.parse(
       StatusCmdType.tempType.find(segments),
       StatusCmdType.tempVal.find(segments),
     );
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
@@ -82,19 +90,20 @@ Future<ServerStatus> _getLinuxStatus(ServerStatusUpdateReq req) async {
       req.ss.tcp = tcp;
     }
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.disk = Disk.parse(StatusCmdType.disk.find(segments));
+    req.ss.diskUsage = DiskUsage.parse(req.ss.disk);
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.mem = Memory.parse(StatusCmdType.mem.find(segments));
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
@@ -103,26 +112,26 @@ Future<ServerStatus> _getLinuxStatus(ServerStatusUpdateReq req) async {
       req.ss.more[StatusCmdType.uptime] = uptime;
     }
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.swap = Swap.parse(StatusCmdType.mem.find(segments));
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     final diskio = DiskIO.parse(StatusCmdType.diskio.find(segments), time);
     req.ss.diskIO.update(diskio);
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.nvidia = NvidiaSmi.fromXml(StatusCmdType.nvidia.find(segments));
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
@@ -135,7 +144,27 @@ Future<ServerStatus> _getLinuxStatus(ServerStatusUpdateReq req) async {
       req.ss.batteries.addAll(batteries);
     }
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
+  }
+
+  try {
+    final sensors = SensorItem.parse(StatusCmdType.sensors.find(segments));
+    if (sensors.isNotEmpty) {
+      req.ss.sensors.clear();
+      req.ss.sensors.addAll(sensors);
+    }
+  } catch (e, s) {
+    Loggers.app.warning(e, s);
+  }
+
+  try {
+    for (int idx = 0; idx < req.customCmds.length; idx++) {
+      final key = req.customCmds.keys.elementAt(idx);
+      final value = req.segments[idx + req.system.segmentsLen];
+      req.ss.customCmds[key] = value;
+    }
+  } catch (e, s) {
+    Loggers.app.warning(e, s);
   }
 
   return req.ss;
@@ -150,25 +179,25 @@ Future<ServerStatus> _getBsdStatus(ServerStatusUpdateReq req) async {
     final net = NetSpeed.parseBsd(BSDStatusCmdType.net.find(segments), time);
     req.ss.netSpeed.update(net);
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.more[StatusCmdType.sys] = BSDStatusCmdType.sys.find(segments);
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.cpu = parseBsdCpu(BSDStatusCmdType.cpu.find(segments));
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   // try {
   //   req.ss.mem = parseBsdMem(BSDStatusCmdType.mem.find(segments));
   // } catch (e, s) {
-  //   Loggers.parse.warning(e, s);
+  //   Loggers.app.warning(e, s);
   // }
 
   try {
@@ -177,13 +206,13 @@ Future<ServerStatus> _getBsdStatus(ServerStatusUpdateReq req) async {
       req.ss.more[StatusCmdType.uptime] = uptime;
     }
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
 
   try {
     req.ss.disk = Disk.parse(BSDStatusCmdType.disk.find(segments));
   } catch (e, s) {
-    Loggers.parse.warning(e, s);
+    Loggers.app.warning(e, s);
   }
   return req.ss;
 }
@@ -207,4 +236,10 @@ String? _parseSysVer(String raw) {
     return s[1].replaceAll('"', '').replaceFirst('\n', '');
   }
   return null;
+}
+
+String? _parseHostName(String raw) {
+  if (raw.isEmpty) return null;
+  if (raw.contains(ShellFunc.scriptFile)) return null;
+  return raw;
 }

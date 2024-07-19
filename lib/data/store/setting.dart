@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:toolbox/core/persistant_store.dart';
-import 'package:toolbox/core/utils/platform/base.dart';
-import 'package:toolbox/data/model/app/menu/server_func.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:server_box/data/model/app/menu/server_func.dart';
+import 'package:server_box/data/model/app/server_detail_card.dart';
+import 'package:server_box/data/model/ssh/virtual_key.dart';
 
 import '../model/app/net_view.dart';
 import '../res/default.dart';
@@ -38,16 +38,6 @@ class SettingStore extends PersistentStore {
     'launchPage',
     Defaults.launchPageIdx,
   );
-
-  /// Server detail disk ignore path
-  late final diskIgnorePath =
-      property('diskIgnorePath', Defaults.diskIgnorePath);
-
-  /// Use double column servers page on Desktop
-  // late final doubleColumnServersPage = property(
-  //   'doubleColumnServersPage',
-  //   isDesktop,
-  // );
 
   /// Disk view: amount / IO
   late final serverTabPreferDiskAmount = property(
@@ -93,19 +83,21 @@ class SettingStore extends PersistentStore {
   late final snippetOrder = listProperty<String>('snippetOrder', []);
 
   // Server details page cards order
-  late final detailCardOrder =
-      listProperty('detailCardOrder', Defaults.detailCardOrder);
+  late final detailCardOrder = listProperty(
+    'detailCardOrder',
+    ServerDetailCards.values.map((e) => e.name).toList(),
+  );
 
   // SSH term font size
   late final termFontSize = property('termFontSize', 13.0);
 
   // Locale
-  late final locale = property<String>('locale', '');
+  late final locale = property('locale', '');
 
   // SSH virtual key (ctrl | alt) auto turn off
   late final sshVirtualKeyAutoOff = property('sshVirtualKeyAutoOff', true);
 
-  late final editorFontSize = property('editorFontSize', 13.0);
+  late final editorFontSize = property('editorFontSize', 12.5);
 
   // Editor theme
   late final editorTheme = property(
@@ -128,19 +120,19 @@ class SettingStore extends PersistentStore {
     true,
   );
 
-  late final fullScreenRotateQuarter = property(
-    'fullScreenRotateQuarter',
-    1,
-  );
+  // late final fullScreenRotateQuarter = property(
+  //   'fullScreenRotateQuarter',
+  //   1,
+  // );
 
-  late final keyboardType = property(
-    'keyboardType',
-    TextInputType.text.index,
-  );
+  // late final keyboardType = property(
+  //   'keyboardType',
+  //   TextInputType.text.index,
+  // );
 
   late final sshVirtKeys = listProperty(
     'sshVirtKeys',
-    Defaults.sshVirtKeys.map((e) => e.index).toList(),
+    VirtKey.defaultOrder.map((e) => e.index).toList(),
   );
 
   late final netViewType = property(
@@ -197,29 +189,100 @@ class SettingStore extends PersistentStore {
   /// Open SFTP with last viewed path
   late final sftpOpenLastPath = property('sftpOpenLastPath', true);
 
+  /// Show folders first in SFTP file browser
+  late final sftpShowFoldersFirst = property('sftpShowFoldersFirst', true);
+
   /// Show tip of suspend
   late final showSuspendTip = property('showSuspendTip', true);
 
   /// Webdav sync
   late final webdavSync = property('webdavSync', false);
-  late final webdavUrl = property('webdavUrl', '');
-  late final webdavUser = property('webdavUser', '');
-  late final webdavPwd = property('webdavPwd', '');
+  late final webdavUrl = property('webdavUrl', '', updateLastModified: false);
+  late final webdavUser = property('webdavUser', '', updateLastModified: false);
+  late final webdavPwd = property('webdavPwd', '', updateLastModified: false);
 
   /// Whether collapse UI items by default
   late final collapseUIDefault = property('collapseUIDefault', true);
 
   late final serverFuncBtns = listProperty(
     'serverBtns',
-    [
-      ServerFuncBtn.terminal,
-      ServerFuncBtn.sftp,
-      ServerFuncBtn.container,
-      ServerFuncBtn.process,
-      ServerFuncBtn.pkg,
-      ServerFuncBtn.snippet,
-    ].map((e) => e.index).toList(),
+    ServerFuncBtn.defaultIdxs,
   );
+
+  /// Docker is more popular than podman, set to `false` to use docker
+  late final usePodman = property('usePodman', false);
+
+  /// Try to use `sudo` to run docker command
+  late final containerTrySudo = property('containerTrySudo', true);
+
+  /// Keep previous server status when err occurs
+  late final keepStatusWhenErr = property('keepStatusWhenErr', false);
+
+  /// Parse container stat
+  late final containerParseStat = property('containerParseStat', true);
+
+  /// Auto refresh container status
+  late final contaienrAutoRefresh = property('contaienrAutoRefresh', true);
+
+  /// Use double column servers page on Desktop
+  late final doubleColumnServersPage = property(
+    'doubleColumnServersPage',
+    true,
+  );
+
+  /// Ignore local network device (eg: br-xxx, ovs-system...)
+  /// when building traffic view on server tab
+  late final ignoreLocalNet = property('ignoreLocalNet', true);
+
+  /// Remerber pwd in memory
+  /// Used for [DialogX.showPwdDialog]
+  late final rememberPwdInMem = property('rememberPwdInMem', true);
+
+  /// SSH Term Theme
+  /// 0: follow app theme, 1: light, 2: dark
+  late final termTheme = property('termTheme', 0);
+
+  /// Compatiablity for Chinese Android.
+  /// Set it to true, if you use Safe Keyboard on Chinese Android
+  // late final cnKeyboardComp = property('cnKeyboardComp', false);
+
+  late final lastVer = property('lastVer', 0);
+
+  /// Use CupertinoPageRoute for all routes
+  late final cupertinoRoute = property('cupertinoRoute', isIOS);
+
+  /// Hide title bar on desktop
+  late final hideTitleBar = property('hideTitleBar', isDesktop);
+
+  /// Display CPU view as progress, also called as old CPU view
+  late final cpuViewAsProgress = property('cpuViewAsProgress', false);
+
+  late final displayCpuIndex = property('displayCpuIndex', true);
+
+  late final editorSoftWrap = property('editorSoftWrap', isIOS);
+
+  late final sshTermHelpShown = property('sshTermHelpShown', false);
+
+  late final horizonVirtKey = property('horizonVirtKey', false);
+
+  /// general wake lock
+  late final generalWakeLock = property('generalWakeLock', false);
+
+  /// ssh page
+  late final sshWakeLock = property('sshWakeLock', true);
+
+  /// fmt: https://example.com/{DIST}-{BRIGHT}.png
+  late final serverLogoUrl = property('serverLogoUrl', '');
+
+  late final betaTest = property('betaTest', false);
+
+  /// If it's empty, skip change window size.
+  /// Format: {width}x{height}
+  late final windowSize = property('windowSize', '');
+
+  late final introVer = property('introVer', 0);
+
+  late final letterCache = property('letterCache', false);
 
   // Never show these settings for users
   //
@@ -227,6 +290,9 @@ class SettingStore extends PersistentStore {
 
   /// Version of store db
   late final storeVersion = property('storeVersion', 0);
+
+  /// Have notified user for notificaiton permission or not
+  late final noNotiPerm = property('noNotiPerm', false);
 
   // ------END------
 }

@@ -2,13 +2,14 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:computer/computer.dart';
+import 'package:fl_lib/fl_lib.dart';
 import 'package:icloud_storage/icloud_storage.dart';
 import 'package:logging/logging.dart';
-import 'package:toolbox/data/model/app/backup.dart';
-import 'package:toolbox/data/model/app/sync.dart';
+import 'package:server_box/data/model/app/backup.dart';
+import 'package:server_box/data/model/app/sync.dart';
+import 'package:server_box/data/res/misc.dart';
 
 import '../../../data/model/app/error.dart';
-import '../../../data/res/path.dart';
 
 abstract final class ICloud {
   static const _containerId = 'iCloud.tech.lolli.serverbox';
@@ -17,31 +18,37 @@ abstract final class ICloud {
 
   /// Upload file to iCloud
   ///
-  /// - [relativePath] is the path relative to [docDir],
+  /// - [relativePath] is the path relative to [Paths.doc],
   /// must not starts with `/`
   /// - [localPath] has higher priority than [relativePath], but only apply
   /// to the local path instead of iCloud path
   ///
-  /// Return `null` if upload success, `ICloudErr` otherwise
+  /// Return [null] if upload success, [ICloudErr] otherwise
   static Future<ICloudErr?> upload({
     required String relativePath,
     String? localPath,
   }) async {
     final completer = Completer<ICloudErr?>();
-    await ICloudStorage.upload(
-      containerId: _containerId,
-      filePath: localPath ?? '${await Paths.doc}/$relativePath',
-      destinationRelativePath: relativePath,
-      onProgress: (stream) {
-        stream.listen(
-          null,
-          onDone: () => completer.complete(null),
-          onError: (e) => completer.complete(
-            ICloudErr(type: ICloudErrType.generic, message: '$e'),
-          ),
-        );
-      },
-    );
+    try {
+      await ICloudStorage.upload(
+        containerId: _containerId,
+        filePath: localPath ?? '${Paths.doc}/$relativePath',
+        destinationRelativePath: relativePath,
+        onProgress: (stream) {
+          stream.listen(
+            null,
+            onDone: () => completer.complete(null),
+            onError: (e) => completer.complete(
+              ICloudErr(type: ICloudErrType.generic, message: '$e'),
+            ),
+          );
+        },
+      );
+    } catch (e, s) {
+      _logger.warning('Upload $relativePath failed', e, s);
+      completer.complete(ICloudErr(type: ICloudErrType.generic, message: '$e'));
+    }
+
     return completer.future;
   }
 
@@ -52,20 +59,24 @@ abstract final class ICloud {
   }
 
   static Future<void> delete(String relativePath) async {
-    await ICloudStorage.delete(
-      containerId: _containerId,
-      relativePath: relativePath,
-    );
+    try {
+      await ICloudStorage.delete(
+        containerId: _containerId,
+        relativePath: relativePath,
+      );
+    } catch (e, s) {
+      _logger.warning('Delete $relativePath failed', e, s);
+    }
   }
 
   /// Download file from iCloud
   ///
-  /// - [relativePath] is the path relative to [docDir],
+  /// - [relativePath] is the path relative to [Paths.doc],
   /// must not starts with `/`
   /// - [localPath] has higher priority than [relativePath], but only apply
   /// to the local path instead of iCloud path
   ///
-  /// Return `null` if upload success, `ICloudErr` otherwise
+  /// Return `null` if upload success, [ICloudErr] otherwise
   static Future<ICloudErr?> download({
     required String relativePath,
     String? localPath,
@@ -75,7 +86,7 @@ abstract final class ICloud {
       await ICloudStorage.download(
         containerId: _containerId,
         relativePath: relativePath,
-        destinationFilePath: localPath ?? '${await Paths.doc}/$relativePath',
+        destinationFilePath: localPath ?? '${Paths.doc}/$relativePath',
         onProgress: (stream) {
           stream.listen(
             null,
@@ -95,12 +106,12 @@ abstract final class ICloud {
 
   /// Sync file between iCloud and local
   ///
-  /// - [relativePath] is the path relative to [docDir],
+  /// - [relativePaths] is the path relative to [Paths.doc],
   /// must not starts with `/`
-  /// - [bakSuffix] is the suffix of backup file, default to [null].
-  /// All files downloaded from cloud will be suffixed with [bakSuffix].
+  /// - [bakPrefix] is the suffix of backup file, default to [null].
+  /// All files downloaded from cloud will be suffixed with [bakPrefix].
   ///
-  /// Return `null` if upload success, `ICloudErr` otherwise
+  /// Return `null` if upload success, [ICloudErr] otherwise
   static Future<SyncResult<String, ICloudErr>> syncFiles({
     required Iterable<String> relativePaths,
     String? bakPrefix,
@@ -129,7 +140,7 @@ abstract final class ICloud {
         }
       }));
 
-      final docPath = await Paths.doc;
+      final docPath = Paths.doc;
 
       /// compare files in iCloud and local
       missions.addAll(allFiles.map((file) async {
@@ -188,14 +199,13 @@ abstract final class ICloud {
   }
 
   static Future<void> sync() async {
-    final result = await download(relativePath: Paths.bakName);
+    final result = await download(relativePath: Miscs.bakFileName);
     if (result != null) {
-      _logger.warning('Download backup failed: $result');
       await backup();
       return;
     }
 
-    final dlFile = await File(await Paths.bak).readAsString();
+    final dlFile = await File(Paths.bak).readAsString();
     final dlBak = await Computer.shared.start(Backup.fromJsonString, dlFile);
     await dlBak.restore();
 
@@ -204,7 +214,7 @@ abstract final class ICloud {
 
   static Future<void> backup() async {
     await Backup.backup();
-    final uploadResult = await upload(relativePath: Paths.bakName);
+    final uploadResult = await upload(relativePath: Miscs.bakFileName);
     if (uploadResult != null) {
       _logger.warning('Upload backup failed: $uploadResult');
     } else {

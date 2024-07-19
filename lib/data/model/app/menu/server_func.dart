@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
+import 'package:icons_plus/icons_plus.dart';
+import 'package:server_box/core/extension/context/locale.dart';
 
 part 'server_func.g.dart';
 
@@ -20,13 +21,24 @@ enum ServerFuncBtn {
   snippet,
   @HiveField(6)
   iperf,
+  // @HiveField(7)
+  // pve,
   ;
+
+  static final defaultIdxs = [
+    terminal,
+    sftp,
+    container,
+    process,
+    pkg,
+    snippet,
+  ].map((e) => e.index).toList();
 
   IconData get icon => switch (this) {
         sftp => Icons.insert_drive_file,
         snippet => Icons.code,
         pkg => Icons.system_security_update,
-        container => Icons.view_agenda,
+        container => FontAwesome.docker_brand,
         process => Icons.list_alt_outlined,
         terminal => Icons.terminal,
         iperf => Icons.speed,
@@ -41,8 +53,4 @@ enum ServerFuncBtn {
         terminal => l10n.terminal,
         iperf => 'iperf',
       };
-
-  int toJson() => index;
-
-  static ServerFuncBtn fromJson(int i) => values[i];
 }

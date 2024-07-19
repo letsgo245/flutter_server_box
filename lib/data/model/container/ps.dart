@@ -1,15 +1,25 @@
 import 'dart:convert';
 
-import 'package:toolbox/data/model/container/type.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/model/container/type.dart';
+import 'package:server_box/data/res/misc.dart';
 
-abstract final class ContainerPs {
+sealed class ContainerPs {
   final String? id = null;
   final String? image = null;
   String? get name;
   String? get cmd;
   bool get running;
 
-  factory ContainerPs.fromRawJson(String s, ContainerType typ) => typ.ps(s);
+  String? cpu;
+  String? mem;
+  String? net;
+  String? disk;
+
+  factory ContainerPs.fromRaw(String s, ContainerType typ) => typ.ps(s);
+
+  void parseStats(String s);
 }
 
 final class PodmanPs implements ContainerPs {
@@ -22,6 +32,15 @@ final class PodmanPs implements ContainerPs {
   final String? image;
   final List<String>? names;
   final int? startedAt;
+
+  @override
+  String? cpu;
+  @override
+  String? mem;
+  @override
+  String? net;
+  @override
+  String? disk;
 
   PodmanPs({
     this.command,
@@ -41,6 +60,23 @@ final class PodmanPs implements ContainerPs {
 
   @override
   bool get running => exited != true;
+
+  @override
+  void parseStats(String s) {
+    final stats = json.decode(s);
+    final cpuD = (stats['CPU'] as double? ?? 0).toStringAsFixed(1);
+    final cpuAvgD = (stats['AvgCPU'] as double? ?? 0).toStringAsFixed(1);
+    cpu = '$cpuD% / ${l10n.pingAvg} $cpuAvgD%';
+    final memLimit = (stats['MemLimit'] as int? ?? 0).bytes2Str;
+    final memUsage = (stats['MemUsage'] as int? ?? 0).bytes2Str;
+    mem = '$memUsage / $memLimit';
+    final netIn = (stats['NetInput'] as int? ?? 0).bytes2Str;
+    final netOut = (stats['NetOutput'] as int? ?? 0).bytes2Str;
+    net = '↓ $netIn / ↑ $netOut';
+    final diskIn = (stats['BlockInput'] as int? ?? 0).bytes2Str;
+    final diskOut = (stats['BlockOutput'] as int? ?? 0).bytes2Str;
+    disk = '${l10n.read} $diskOut / ${l10n.write} $diskIn';
+  }
 
   factory PodmanPs.fromRawJson(String str) =>
       PodmanPs.fromJson(json.decode(str));
@@ -75,8 +111,6 @@ final class PodmanPs implements ContainerPs {
 }
 
 final class DockerPs implements ContainerPs {
-  final String? command;
-  final String? createdAt;
   @override
   final String? id;
   @override
@@ -84,9 +118,16 @@ final class DockerPs implements ContainerPs {
   final String? names;
   final String? state;
 
+  @override
+  String? cpu;
+  @override
+  String? mem;
+  @override
+  String? net;
+  @override
+  String? disk;
+
   DockerPs({
-    this.command,
-    this.createdAt,
     this.id,
     this.image,
     this.names,
@@ -97,31 +138,32 @@ final class DockerPs implements ContainerPs {
   String? get name => names;
 
   @override
-  String? get cmd => command;
+  String? get cmd => null;
 
   @override
-  bool get running => state == 'running';
+  bool get running {
+    if (state?.contains('Exited') == true) return false;
+    return true;
+  }
 
-  factory DockerPs.fromRawJson(String str) =>
-      DockerPs.fromJson(json.decode(str));
+  @override
+  void parseStats(String s) {
+    final stats = json.decode(s);
+    cpu = stats['CPUPerc'];
+    mem = stats['MemUsage'];
+    net = stats['NetIO'];
+    disk = stats['BlockIO'];
+  }
 
-  String toRawJson() => json.encode(toJson());
-
-  factory DockerPs.fromJson(Map<String, dynamic> json) => DockerPs(
-        command: json["Command"],
-        createdAt: json["CreatedAt"],
-        id: json["ID"],
-        image: json["Image"],
-        names: json["Names"],
-        state: json["State"],
-      );
-
-  Map<String, dynamic> toJson() => {
-        "Command": command,
-        "CreatedAt": createdAt,
-        "ID": id,
-        "Image": image,
-        "Names": names,
-        "State": state,
-      };
+  /// CONTAINER ID                   NAMES                          IMAGE                          STATUS
+  /// a049d689e7a1                   aria2-pro                      p3terx/aria2-pro               Up 3 weeks
+  factory DockerPs.parse(String raw) {
+    final parts = raw.split(Miscs.multiBlankreg);
+    return DockerPs(
+      id: parts[0],
+      state: parts[1],
+      names: parts[2],
+      image: parts[3].trim(),
+    );
+  }
 }

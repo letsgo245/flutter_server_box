@@ -1,13 +1,8 @@
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/extension/context/snackbar.dart';
-import 'package:toolbox/core/utils/platform/base.dart';
-import 'package:toolbox/data/res/default.dart';
-import 'package:toolbox/data/res/store.dart';
-
-import '../../../../core/extension/order.dart';
-import '../../../widget/appbar.dart';
-import '../../../widget/cardx.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/model/app/server_detail_card.dart';
+import 'package:server_box/data/res/store.dart';
 
 class ServerDetailOrderPage extends StatefulWidget {
   const ServerDetailOrderPage({super.key});
@@ -17,6 +12,8 @@ class ServerDetailOrderPage extends StatefulWidget {
 }
 
 class _ServerDetailOrderPageState extends State<ServerDetailOrderPage> {
+  final prop = Stores.setting.detailCardOrder;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -28,35 +25,39 @@ class _ServerDetailOrderPageState extends State<ServerDetailOrderPage> {
   }
 
   Widget _buildBody() {
-    final keys_ = Stores.setting.detailCardOrder.fetch();
-    final keys = <String>[];
-    for (final key in keys_) {
-      keys.add(key);
-    }
-    final disabled =
-        Defaults.detailCardOrder.where((e) => !keys.contains(e)).toList();
-    final allKeys = [...keys, ...disabled];
-    return ReorderableListView.builder(
-      padding: const EdgeInsets.all(7),
-      itemBuilder: (_, idx) {
-        final key = allKeys[idx];
-        return CardX(
-          key: ValueKey(idx),
-          child: ListTile(
-            title: Text(key),
-            leading: _buildCheckBox(keys, key, idx, idx < keys.length),
-            trailing: isDesktop ? null : const Icon(Icons.drag_handle),
-          ),
+    return ValBuilder(
+      listenable: prop.listenable(),
+      builder: (keys) {
+        final disabled =
+            ServerDetailCards.names.where((e) => !keys.contains(e)).toList();
+        final allKeys = [...keys, ...disabled];
+        return ReorderableListView.builder(
+          padding: const EdgeInsets.all(7),
+          buildDefaultDragHandles: false,
+          itemBuilder: (_, idx) {
+            final key = allKeys[idx];
+            return ReorderableDelayedDragStartListener(
+              key: ValueKey(idx),
+              index: idx,
+              child: CardX(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.only(left: 23, right: 11),
+                  leading: Icon(ServerDetailCards.fromName(key)?.icon),
+                  title: Text(key),
+                  trailing: _buildCheckBox(keys, key, idx, idx < keys.length),
+                ),
+              ),
+            );
+          },
+          itemCount: allKeys.length,
+          onReorder: (o, n) {
+            if (o >= keys.length || n >= keys.length) {
+              context.showSnackBar(l10n.disabled);
+              return;
+            }
+            keys.moveByItem(o, n, property: prop);
+          },
         );
-      },
-      itemCount: allKeys.length,
-      onReorder: (o, n) {
-        if (o >= keys.length || n >= keys.length) {
-          context.showSnackBar(l10n.disabled);
-          return;
-        }
-        keys.moveByItem(keys, o, n, property: Stores.setting.detailCardOrder);
-        setState(() {});
       },
     );
   }
@@ -75,8 +76,7 @@ class _ServerDetailOrderPageState extends State<ServerDetailOrderPage> {
         } else {
           keys.remove(key);
         }
-        Stores.setting.detailCardOrder.put(keys);
-        setState(() {});
+        prop.put(keys);
       },
     );
   }

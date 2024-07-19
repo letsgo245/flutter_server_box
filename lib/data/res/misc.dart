@@ -1,10 +1,8 @@
 import 'dart:convert';
 
 abstract final class Miscs {
-  /// RegExp for number
-  static final numReg = RegExp(r'\s{1,}');
-
   static final blankReg = RegExp(r'\s+');
+  static final multiBlankreg = RegExp(r'\s{2,}');
 
   /// RegExp for password request
   static final pwdRequestWithUserReg = RegExp(r'\[sudo\] password for (.+):');
@@ -21,4 +19,6 @@ abstract final class Miscs {
   static const pkgName = 'tech.lolli.toolbox';
 
   static const jsonEncoder = JsonEncoder.withIndent('  ');
+
+  static const bakFileName = 'srvbox_bak.json';
 }

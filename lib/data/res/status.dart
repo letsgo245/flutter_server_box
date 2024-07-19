@@ -1,5 +1,5 @@
-import 'package:toolbox/data/model/server/server.dart';
-import 'package:toolbox/data/model/server/temp.dart';
+import 'package:server_box/data/model/server/server.dart';
+import 'package:server_box/data/model/server/temp.dart';
 
 import '../model/server/cpu.dart';
 import '../model/server/disk.dart';
@@ -9,7 +9,7 @@ import '../model/server/conn.dart';
 import '../model/server/system.dart';
 
 abstract final class InitStatus {
-  static OneTimeCpuStatus get _initOneTimeCpuStatus => OneTimeCpuStatus(
+  static SingleCpuCore get _initOneTimeCpuStatus => SingleCpuCore(
         'cpu',
         0,
         0,
@@ -42,7 +42,7 @@ abstract final class InitStatus {
         ),
         disk: [
           Disk(
-            dev: '/',
+            fs: '/',
             mount: '/',
             usedPercent: 0,
             used: BigInt.zero,

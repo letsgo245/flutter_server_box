@@ -1,4 +1,4 @@
-import 'package:toolbox/data/model/server/dist.dart';
+import 'package:server_box/data/model/server/dist.dart';
 
 enum PkgManager {
   apt,
@@ -105,6 +105,7 @@ enum PkgManager {
       case Dist.ubuntu:
       case Dist.kali:
       case Dist.armbian:
+      case Dist.deepin:
         return PkgManager.apt;
       case Dist.opensuse:
         return PkgManager.zypper;
@@ -114,7 +115,7 @@ enum PkgManager {
         return PkgManager.pacman;
       case Dist.alpine:
         return PkgManager.apk;
-      default:
+      case null:
         return null;
     }
   }

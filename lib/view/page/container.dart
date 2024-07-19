@@ -1,25 +1,19 @@
+import 'dart:async';
+
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:toolbox/core/extension/context/common.dart';
-import 'package:toolbox/core/extension/context/dialog.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/extension/context/snackbar.dart';
-import 'package:toolbox/core/extension/stringx.dart';
-import 'package:toolbox/core/route.dart';
-import 'package:toolbox/data/model/app/menu/container.dart';
-import 'package:toolbox/data/model/container/image.dart';
-import 'package:toolbox/data/model/container/type.dart';
-import 'package:toolbox/data/res/store.dart';
-import 'package:toolbox/view/widget/expand_tile.dart';
-import 'package:toolbox/view/widget/input_field.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/core/route.dart';
+import 'package:server_box/data/model/app/menu/base.dart';
+import 'package:server_box/data/model/app/menu/container.dart';
+import 'package:server_box/data/model/container/image.dart';
+import 'package:server_box/data/model/container/type.dart';
+import 'package:server_box/data/res/store.dart';
 
 import '../../data/model/container/ps.dart';
 import '../../data/model/server/server_private_info.dart';
 import '../../data/provider/container.dart';
-import '../../data/res/ui.dart';
-import '../widget/appbar.dart';
-import '../widget/popup_menu.dart';
-import '../widget/cardx.dart';
 import '../widget/two_line_text.dart';
 
 class ContainerPage extends StatefulWidget {
@@ -38,6 +32,7 @@ class _ContainerPageState extends State<ContainerPage> {
     hostId: widget.spi.id,
     context: context,
   );
+  late Size _size;
 
   @override
   void dispose() {
@@ -48,6 +43,13 @@ class _ContainerPageState extends State<ContainerPage> {
   @override
   void initState() {
     super.initState();
+    _initAutoRefresh();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _size = MediaQuery.of(context).size;
   }
 
   @override
@@ -59,14 +61,11 @@ class _ContainerPageState extends State<ContainerPage> {
           return Scaffold(
             appBar: CustomAppBar(
               centerTitle: true,
-              title: TwoLineText(up: 'Container', down: widget.spi.name),
+              title: TwoLineText(up: l10n.container, down: widget.spi.name),
               actions: [
                 IconButton(
-                  onPressed: () async {
-                    context.showLoadingDialog();
-                    await _container.refresh();
-                    context.pop();
-                  },
+                  onPressed: () =>
+                      context.showLoadingDialog(fn: () => _container.refresh()),
                   icon: const Icon(Icons.refresh),
                 )
               ],
@@ -113,22 +112,22 @@ class _ContainerPageState extends State<ContainerPage> {
       return UIs.centerLoading;
     }
 
-    final items = <Widget>[
-      _buildLoading(),
-      _buildVersion(),
-      _buildPs(),
-      _buildImage(),
-      _buildEditHost(),
-      _buildSwitchProvider(),
-    ].map((e) => CardX(child: e)).toList();
     return ListView(
       padding: const EdgeInsets.only(left: 13, right: 13, top: 13, bottom: 37),
-      children: items,
+      children: <Widget>[
+        _buildLoading(),
+        _buildVersion(),
+        _buildPs(),
+        _buildImage(),
+        _buildEditHost(),
+        _buildSwitchProvider(),
+      ],
     );
   }
 
   Widget _buildImage() {
-    return ExpandTile(
+    return CardX(
+        child: ExpandTile(
       title: Text(l10n.imagesList),
       subtitle: Text(
         l10n.dockerImagesFmt(_container.images!.length),
@@ -136,7 +135,7 @@ class _ContainerPageState extends State<ContainerPage> {
       ),
       initiallyExpanded: (_container.images?.length ?? 0) <= 3,
       children: _container.images?.map(_buildImageItem).toList() ?? [],
-    );
+    ));
   }
 
   Widget _buildImageItem(ContainerImg e) {
@@ -169,7 +168,8 @@ class _ContainerPageState extends State<ContainerPage> {
   }
 
   Widget _buildVersion() {
-    return Padding(
+    return CardX(
+        child: Padding(
       padding: const EdgeInsets.all(17),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -178,49 +178,105 @@ class _ContainerPageState extends State<ContainerPage> {
           Text(_container.version ?? l10n.unknown),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildPs() {
     final items = _container.items;
     if (items == null) return UIs.placeholder;
-    return ExpandTile(
-      title: Text(l10n.containerStatus),
-      subtitle: Text(
-        _buildPsCardSubtitle(items),
-        style: UIs.textGrey,
-      ),
-      initiallyExpanded: items.length <= 7,
+    return Column(
       children: items.map(_buildPsItem).toList(),
     );
   }
 
   Widget _buildPsItem(ContainerPs item) {
-    return ListTile(
-      title: Text(item.name ?? l10n.unknown),
-      subtitle: Text(
-        '${item.image ?? l10n.unknown} - ${item.running ? l10n.running : l10n.stopped}',
-        style: UIs.text13Grey,
+    return CardX(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(item.name ?? l10n.unknown, style: UIs.text15),
+                const SizedBox(height: 3),
+                _buildMoreBtn(item),
+              ],
+            ),
+            Text(
+              '${item.image ?? l10n.unknown} - ${switch (item) {
+                final PodmanPs ps => ps.running ? l10n.running : l10n.stopped,
+                final DockerPs ps => ps.state,
+              }}',
+              style: UIs.text13Grey,
+            ),
+            _buildPsItemStats(item),
+          ],
+        ),
       ),
-      trailing: _buildMoreBtn(item),
+    );
+  }
+
+  Widget _buildPsItemStats(ContainerPs item) {
+    if (item.cpu == null || item.mem == null) return UIs.placeholder;
+    return Column(
+      children: [
+        UIs.height13,
+        Row(
+          children: [
+            _buildPsItemStatsItem('CPU', item.cpu, Icons.memory),
+            UIs.width13,
+            _buildPsItemStatsItem('Net', item.net, Icons.network_cell),
+          ],
+        ),
+        Row(
+          children: [
+            _buildPsItemStatsItem(
+                'Mem', item.mem, Icons.settings_input_component),
+            UIs.width13,
+            _buildPsItemStatsItem('Disk', item.disk, Icons.storage),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPsItemStatsItem(String title, String? value, IconData icon) {
+    return SizedBox(
+      width: _size.width / 2 - 41,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 12, color: Colors.grey),
+              UIs.width7,
+              Text(value ?? l10n.unknown, style: UIs.text11Grey),
+            ],
+          )
+        ],
+      ),
     );
   }
 
   Widget _buildMoreBtn(ContainerPs dItem) {
     return PopupMenu(
-      items: ContainerMenu.items(dItem.running).map((e) => e.widget).toList(),
+      items: ContainerMenu.items(dItem.running)
+          .map((e) => PopMenu.build(e, e.icon, e.toStr))
+          .toList(),
       onSelected: (item) => _onTapMoreBtn(item, dItem),
     );
   }
 
-  String _buildPsCardSubtitle(List<ContainerPs> running) {
-    final runningCount = running.where((element) => element.running).length;
-    final stoped = running.length - runningCount;
-    if (stoped == 0) {
-      return l10n.dockerStatusRunningFmt(runningCount);
-    }
-    return l10n.dockerStatusRunningAndStoppedFmt(runningCount, stoped);
-  }
+  // String _buildPsCardSubtitle(List<ContainerPs> running) {
+  //   final runningCount = running.where((element) => element.running).length;
+  //   final stoped = running.length - runningCount;
+  //   if (stoped == 0) {
+  //     return l10n.dockerStatusRunningFmt(runningCount);
+  //   }
+  //   return l10n.dockerStatusRunningAndStoppedFmt(runningCount, stoped);
+  // }
 
   Widget _buildEditHost() {
     final children = <Widget>[];
@@ -241,9 +297,10 @@ class _ContainerPageState extends State<ContainerPage> {
         child: Text(l10n.dockerEditHost),
       ),
     );
-    return Column(
+    return CardX(
+        child: Column(
       children: children,
-    );
+    ));
   }
 
   Widget _buildSwitchProvider() {
@@ -263,7 +320,7 @@ class _ContainerPageState extends State<ContainerPage> {
         child: Text(l10n.switchTo('Podman')),
       );
     }
-    return child;
+    return CardX(child: child);
   }
 
   Future<void> _showAddFAB() async {
@@ -271,7 +328,7 @@ class _ContainerPageState extends State<ContainerPage> {
     final nameCtrl = TextEditingController();
     final argsCtrl = TextEditingController();
     await context.showRoundDialog(
-      title: Text(l10n.newContainer),
+      title: l10n.newContainer,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -320,7 +377,7 @@ class _ContainerPageState extends State<ContainerPage> {
 
   Future<void> _showAddCmdPreview(String cmd) async {
     await context.showRoundDialog(
-      title: Text(l10n.preview),
+      title: l10n.preview,
       child: Text(cmd),
       actions: [
         TextButton(
@@ -330,9 +387,10 @@ class _ContainerPageState extends State<ContainerPage> {
         TextButton(
           onPressed: () async {
             context.pop();
-            context.showLoadingDialog();
-            final result = await _container.run(cmd);
-            context.pop();
+
+            final result = await context.showLoadingDialog(
+              fn: () => _container.run(cmd),
+            );
             if (result != null) {
               context.showSnackBar(result.message ?? l10n.unknownError);
             }
@@ -358,10 +416,10 @@ class _ContainerPageState extends State<ContainerPage> {
 
   Future<void> _showEditHostDialog() async {
     final id = widget.spi.id;
-    final host = Stores.docker.fetch(id);
+    final host = Stores.container.fetch(id);
     final ctrl = TextEditingController(text: host);
     await context.showRoundDialog(
-      title: Text(l10n.dockerEditHost),
+      title: l10n.dockerEditHost,
       child: Input(
         maxLines: 2,
         controller: ctrl,
@@ -379,13 +437,13 @@ class _ContainerPageState extends State<ContainerPage> {
 
   void _onSaveDockerHost(String val) {
     context.pop();
-    Stores.docker.put(widget.spi.id, val.trim());
+    Stores.container.put(widget.spi.id, val.trim());
     _container.refresh();
   }
 
   void _showImageRmDialog(ContainerImg e) {
     context.showRoundDialog(
-      title: Text(l10n.attention),
+      title: l10n.attention,
       child: Text(l10n.askContinue('${l10n.delete} Image(${e.repository})')),
       actions: [
         TextButton(
@@ -416,7 +474,7 @@ class _ContainerPageState extends State<ContainerPage> {
       case ContainerMenu.rm:
         var force = false;
         context.showRoundDialog(
-          title: Text(l10n.attention),
+          title: l10n.attention,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -443,12 +501,13 @@ class _ContainerPageState extends State<ContainerPage> {
             TextButton(
               onPressed: () async {
                 context.pop();
-                context.showLoadingDialog();
-                final result = await _container.delete(id, force);
-                context.pop();
+
+                final result = await context.showLoadingDialog(
+                  fn: () => _container.delete(id, force),
+                );
                 if (result != null) {
                   context.showRoundDialog(
-                    title: Text(l10n.error),
+                    title: l10n.error,
                     child: Text(result.message ?? l10n.unknownError),
                   );
                 }
@@ -459,48 +518,54 @@ class _ContainerPageState extends State<ContainerPage> {
         );
         break;
       case ContainerMenu.start:
-        context.showLoadingDialog();
-        final result = await _container.start(id);
-        context.pop();
+        final result = await context.showLoadingDialog(
+          fn: () => _container.start(id),
+        );
         if (result != null) {
           context.showRoundDialog(
-            title: Text(l10n.error),
+            title: l10n.error,
             child: Text(result.message ?? l10n.unknownError),
           );
         }
         break;
       case ContainerMenu.stop:
-        context.showLoadingDialog();
-        final result = await _container.stop(id);
-        context.pop();
+        final result = await context.showLoadingDialog(
+          fn: () => _container.stop(id),
+        );
         if (result != null) {
           context.showRoundDialog(
-            title: Text(l10n.error),
+            title: l10n.error,
             child: Text(result.message ?? l10n.unknownError),
           );
         }
         break;
       case ContainerMenu.restart:
-        context.showLoadingDialog();
-        final result = await _container.restart(id);
-        context.pop();
+        final result = await context.showLoadingDialog(
+          fn: () => _container.restart(id),
+        );
         if (result != null) {
           context.showRoundDialog(
-            title: Text(l10n.error),
+            title: l10n.error,
             child: Text(result.message ?? l10n.unknownError),
           );
         }
         break;
       case ContainerMenu.logs:
-        AppRoute.ssh(
+        AppRoutes.ssh(
           spi: widget.spi,
-          initCmd: 'docker logs -f --tail 100 ${dItem.id}',
+          initCmd: '${switch (_container.type) {
+            ContainerType.podman => 'podman',
+            ContainerType.docker => 'docker',
+          }} logs -f --tail 100 ${dItem.id}',
         ).go(context);
         break;
       case ContainerMenu.terminal:
-        AppRoute.ssh(
+        AppRoutes.ssh(
           spi: widget.spi,
-          initCmd: 'docker exec -it ${dItem.id} sh',
+          initCmd: '${switch (_container.type) {
+            ContainerType.podman => 'podman',
+            ContainerType.docker => 'docker',
+          }} exec -it ${dItem.id} sh',
         ).go(context);
         break;
       // case DockerMenuType.stats:
@@ -521,6 +586,21 @@ class _ContainerPageState extends State<ContainerPage> {
       //     ],
       //   );
       //   break;
+    }
+  }
+
+  void _initAutoRefresh() {
+    if (Stores.setting.contaienrAutoRefresh.fetch()) {
+      Timer.periodic(
+        Duration(seconds: Stores.setting.serverStatusUpdateInterval.fetch()),
+        (timer) {
+          if (mounted) {
+            _container.refresh(isAuto: true);
+          } else {
+            timer.cancel();
+          }
+        },
+      );
     }
   }
 }

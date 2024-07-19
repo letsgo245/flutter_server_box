@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -37,11 +38,16 @@ class HomeWidget : AppWidgetProvider() {
         val ids = intArrayOf(appWidgetId)
         intentUpdate.putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
 
+        var flag = PendingIntent.FLAG_UPDATE_CURRENT
+        if (Build.VERSION_CODES.O <= Build.VERSION.SDK_INT) {    
+            flag = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        }
+
         val pendingUpdate: PendingIntent = PendingIntent.getBroadcast(
                 context,
                 appWidgetId,
                 intentUpdate,
-                PendingIntent.FLAG_UPDATE_CURRENT)
+                flag)
         views.setOnClickPendingIntent(R.id.widget_container, pendingUpdate)
 
         if (url.isNullOrEmpty()) {
@@ -60,33 +66,45 @@ class HomeWidget : AppWidgetProvider() {
         }
 
         GlobalScope.launch(Dispatchers.IO) {
-            val jsonStr = URL(url).readText()
-            val jsonObject = JSONObject(jsonStr)
-            val data = jsonObject.getJSONObject("data")
-            val server = data.getString("name")
-            val cpu = data.getString("cpu")
-            val mem = data.getString("mem")
-            val disk = data.getString("disk")
-            val net = data.getString("net")
+            try {
+                val jsonStr = URL(url).readText()
+                val jsonObject = JSONObject(jsonStr)
+                val data = jsonObject.getJSONObject("data")
+                val server = data.getString("name")
+                val cpu = data.getString("cpu")
+                val mem = data.getString("mem")
+                val disk = data.getString("disk")
+                val net = data.getString("net")
 
-            GlobalScope.launch(Dispatchers.Main) {
-                // mem or disk is empty -> get status failed
-                // (cpu | net) isEmpty -> data is not ready
-                if (mem.isEmpty() || disk.isEmpty()) {
-                    return@launch
+                GlobalScope.launch(Dispatchers.Main) main@ {
+                    // mem or disk is empty -> get status failed
+                    // (cpu | net) isEmpty -> data is not ready
+                    if (mem.isEmpty() || disk.isEmpty()) {
+                        return@main
+                    }
+                    views.setTextViewText(R.id.widget_name, server)
+
+                    views.setTextViewText(R.id.widget_cpu, cpu)
+                    views.setTextViewText(R.id.widget_mem, mem)
+                    views.setTextViewText(R.id.widget_disk, disk)
+                    views.setTextViewText(R.id.widget_net, net)
+
+                    val timeStr = android.text.format.DateFormat.format("HH:mm", java.util.Date()).toString()
+                    views.setTextViewText(R.id.widget_time, timeStr)
+
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
                 }
-                views.setTextViewText(R.id.widget_name, server)
-
-                views.setTextViewText(R.id.widget_cpu, cpu)
-                views.setTextViewText(R.id.widget_mem, mem)
-                views.setTextViewText(R.id.widget_disk, disk)
-                views.setTextViewText(R.id.widget_net, net)
-
-                // eg: 17:17
-                val timeStr = android.text.format.DateFormat.format("HH:mm", java.util.Date()).toString()
-                views.setTextViewText(R.id.widget_time, timeStr)
-
-                appWidgetManager.updateAppWidget(appWidgetId, views)
+            } catch (e: Exception) {
+                println("ServerBoxHomeWidget: ${e.localizedMessage}")
+                GlobalScope.launch(Dispatchers.Main) main@ {
+                    views.setViewVisibility(R.id.widget_cpu_label, View.INVISIBLE)
+                    views.setViewVisibility(R.id.widget_mem_label, View.INVISIBLE)
+                    views.setViewVisibility(R.id.widget_disk_label, View.INVISIBLE)
+                    views.setViewVisibility(R.id.widget_net_label, View.INVISIBLE)
+                    views.setTextViewText(R.id.widget_name, "ID: $appWidgetId")
+                    views.setTextViewText(R.id.widget_mem, e.localizedMessage)
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
+                }
             }
         }
     }

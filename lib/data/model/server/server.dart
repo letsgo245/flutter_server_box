@@ -1,28 +1,34 @@
 import 'package:dartssh2/dartssh2.dart';
-import 'package:toolbox/data/model/app/shell_func.dart';
-import 'package:toolbox/data/model/server/battery.dart';
-import 'package:toolbox/data/model/server/conn.dart';
-import 'package:toolbox/data/model/server/cpu.dart';
-import 'package:toolbox/data/model/server/disk.dart';
-import 'package:toolbox/data/model/server/memory.dart';
-import 'package:toolbox/data/model/server/net_speed.dart';
-import 'package:toolbox/data/model/server/nvdia.dart';
-import 'package:toolbox/data/model/server/server_private_info.dart';
-import 'package:toolbox/data/model/server/system.dart';
-import 'package:toolbox/data/model/server/temp.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/model/app/error.dart';
+import 'package:server_box/data/model/app/shell_func.dart';
+import 'package:server_box/data/model/server/battery.dart';
+import 'package:server_box/data/model/server/conn.dart';
+import 'package:server_box/data/model/server/cpu.dart';
+import 'package:server_box/data/model/server/disk.dart';
+import 'package:server_box/data/model/server/memory.dart';
+import 'package:server_box/data/model/server/net_speed.dart';
+import 'package:server_box/data/model/server/nvdia.dart';
+import 'package:server_box/data/model/server/sensors.dart';
+import 'package:server_box/data/model/server/server_private_info.dart';
+import 'package:server_box/data/model/server/system.dart';
+import 'package:server_box/data/model/server/temp.dart';
 
 import '../app/tag_pickable.dart';
+
+part 'server.ext.dart';
 
 class Server implements TagPickable {
   ServerPrivateInfo spi;
   ServerStatus status;
   SSHClient? client;
-  ServerState state;
+  ServerConn conn;
 
   Server(
     this.spi,
     this.status,
-    this.state, {
+    this.conn, {
     this.client,
   });
 
@@ -34,9 +40,9 @@ class Server implements TagPickable {
   @override
   String get tagName => spi.id;
 
-  bool get needGenClient => state < ServerState.connecting;
+  bool get needGenClient => conn < ServerConn.connecting;
 
-  bool get canViewDetails => state == ServerState.finished;
+  bool get canViewDetails => conn == ServerConn.finished;
 
   String get id => spi.id;
 }
@@ -50,11 +56,14 @@ class ServerStatus {
   NetSpeed netSpeed;
   Temperatures temps;
   SystemType system;
-  String? err;
+  Err? err;
   DiskIO diskIO;
   List<NvidiaSmiItem>? nvidia;
   final List<Battery> batteries = [];
   final Map<StatusCmdType, String> more = {};
+  final List<SensorItem> sensors = [];
+  DiskUsage? diskUsage;
+  final Map<String, String> customCmds = {};
 
   ServerStatus({
     required this.cpu,
@@ -68,10 +77,11 @@ class ServerStatus {
     required this.diskIO,
     this.err,
     this.nvidia,
+    this.diskUsage,
   });
 }
 
-enum ServerState {
+enum ServerConn {
   failed,
   disconnected,
   connecting,
@@ -85,5 +95,5 @@ enum ServerState {
   /// Status parsing finished
   finished;
 
-  operator <(ServerState other) => index < other.index;
+  operator <(ServerConn other) => index < other.index;
 }

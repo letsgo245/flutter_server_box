@@ -1,5 +1,5 @@
+import 'package:fl_lib/fl_lib.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:toolbox/core/persistant_store.dart';
 
 /// index from 0 -> n : latest -> oldest
 class _ListHistory {
@@ -54,4 +54,7 @@ class HistoryStore extends PersistentStore {
   late final sftpLastPath = _MapHistory(box: box, name: 'sftpLastPath');
 
   late final sshCmds = _ListHistory(box: box, name: 'sshCmds');
+
+  /// Notify users that this app will write script to server to works properly
+  late final writeScriptTipShown = property('writeScriptTipShown', false);
 }

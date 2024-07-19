@@ -1,16 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:fl_lib/fl_lib.dart';
 import 'package:logging/logging.dart';
-import 'package:toolbox/core/persistant_store.dart';
-import 'package:toolbox/data/model/server/private_key_info.dart';
-import 'package:toolbox/data/model/server/server_private_info.dart';
-import 'package:toolbox/data/model/server/snippet.dart';
-import 'package:toolbox/data/res/logger.dart';
-import 'package:toolbox/data/res/path.dart';
-import 'package:toolbox/data/res/provider.dart';
-import 'package:toolbox/data/res/rebuild.dart';
-import 'package:toolbox/data/res/store.dart';
+import 'package:server_box/data/model/server/private_key_info.dart';
+import 'package:server_box/data/model/server/server_private_info.dart';
+import 'package:server_box/data/model/server/snippet.dart';
+import 'package:server_box/data/res/misc.dart';
+import 'package:server_box/data/res/provider.dart';
+import 'package:server_box/data/res/rebuild.dart';
+import 'package:server_box/data/res/store.dart';
 
 const backupFormatVersion = 1;
 
@@ -24,7 +23,6 @@ class Backup {
   final List<Snippet> snippets;
   final List<PrivateKeyInfo> keys;
   final Map<String, dynamic> container;
-  final Map<String, dynamic> settings;
   final Map<String, dynamic> history;
   final int? lastModTime;
 
@@ -35,7 +33,6 @@ class Backup {
     required this.snippets,
     required this.keys,
     required this.container,
-    required this.settings,
     required this.history,
     this.lastModTime,
   });
@@ -52,7 +49,6 @@ class Backup {
             .map((e) => PrivateKeyInfo.fromJson(e))
             .toList(),
         container = json['container'] ?? {},
-        settings = json['settings'] ?? {},
         lastModTime = json['lastModTime'],
         history = json['history'] ?? {};
 
@@ -63,25 +59,23 @@ class Backup {
         'snippets': snippets,
         'keys': keys,
         'container': container,
-        'settings': settings,
         'lastModTime': lastModTime,
         'history': history,
       };
 
   Backup.loadFromStore()
       : version = backupFormatVersion,
-        date = DateTime.now().toString().split('.').first,
+        date = DateTime.now().toString().split('.').firstOrNull ?? '',
         spis = Stores.server.fetch(),
         snippets = Stores.snippet.fetch(),
         keys = Stores.key.fetch(),
-        container = Stores.docker.box.toJson(),
-        settings = Stores.setting.box.toJson(),
+        container = Stores.container.box.toJson(),
         lastModTime = Stores.lastModTime,
         history = Stores.history.box.toJson();
 
   static Future<String> backup([String? name]) async {
     final result = _diyEncrypt(json.encode(Backup.loadFromStore().toJson()));
-    final path = '${await Paths.doc}/${name ?? Paths.bakName}';
+    final path = '${Paths.doc}/${name ?? Miscs.bakFileName}';
     await File(path).writeAsString(result);
     return path;
   }
@@ -93,22 +87,6 @@ class Backup {
     if (!shouldRestore) {
       _logger.info('No need to restore, local is newer');
       return;
-    }
-
-    // Settings
-    final nowSettingsKeys = Stores.setting.box.keys.toSet();
-    final bakSettingsKeys = settings.keys.toSet();
-    final newSettingsKeys = bakSettingsKeys.difference(nowSettingsKeys);
-    final delSettingsKeys = nowSettingsKeys.difference(bakSettingsKeys);
-    final updateSettingsKeys = nowSettingsKeys.intersection(bakSettingsKeys);
-    for (final k in newSettingsKeys) {
-      Stores.setting.box.put(k, settings[k]);
-    }
-    for (final k in delSettingsKeys) {
-      Stores.setting.box.delete(k);
-    }
-    for (final k in updateSettingsKeys) {
-      Stores.setting.box.put(k, settings[k]);
     }
 
     // Snippets
@@ -176,23 +154,23 @@ class Backup {
     }
 
     // Container
-    final nowContainer = Stores.docker.box.keys.toSet();
+    final nowContainer = Stores.container.box.keys.toSet();
     final bakContainer = container.keys.toSet();
     final newContainer = bakContainer.difference(nowContainer);
     final delContainer = nowContainer.difference(bakContainer);
     final updateContainer = nowContainer.intersection(bakContainer);
     for (final s in newContainer) {
-      Stores.docker.box.put(s, container[s]);
+      Stores.container.box.put(s, container[s]);
     }
     for (final s in delContainer) {
-      Stores.docker.box.delete(s);
+      Stores.container.box.delete(s);
     }
     for (final s in updateContainer) {
-      Stores.docker.box.put(s, container[s]);
+      Stores.container.box.put(s, container[s]);
     }
 
     Pros.reload();
-    RebuildNodes.app.rebuild();
+    RNodes.app.notify();
 
     _logger.info('Restore success');
   }

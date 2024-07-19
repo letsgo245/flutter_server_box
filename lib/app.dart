@@ -1,16 +1,16 @@
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:fl_lib/l10n/gen_l10n/lib_l10n.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/l10n.dart';
-import 'package:toolbox/core/analysis.dart';
-import 'package:toolbox/core/extension/context/common.dart';
-import 'package:toolbox/core/extension/locale.dart';
-import 'package:toolbox/core/utils/ui.dart';
-import 'package:toolbox/data/res/build_data.dart';
-import 'package:toolbox/data/res/color.dart';
-import 'package:toolbox/data/res/rebuild.dart';
-import 'package:toolbox/data/res/store.dart';
-import 'package:toolbox/view/page/full_screen.dart';
-import 'package:toolbox/view/page/home.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/res/build_data.dart';
+import 'package:server_box/data/res/rebuild.dart';
+import 'package:server_box/data/res/store.dart';
+import 'package:server_box/view/page/home/home.dart';
+import 'package:icons_plus/icons_plus.dart';
+
+part 'intro.dart';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -19,11 +19,11 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     _setup(context);
     return ListenableBuilder(
-      listenable: RebuildNodes.app,
-      builder: (_, __) {
+      listenable: RNodes.app,
+      builder: (context, _) {
         if (!Stores.setting.useSystemPrimaryColor.fetch()) {
-          primaryColor = Color(Stores.setting.primaryColor.fetch());
-          return _buildApp();
+          UIs.colorSeed = Color(Stores.setting.primaryColor.fetch());
+          return _buildApp(context);
         }
         return DynamicColorBuilder(
           builder: (light, dark) {
@@ -37,18 +37,18 @@ class MyApp extends StatelessWidget {
               colorScheme: dark,
             );
             if (context.isDark && light != null) {
-              primaryColor = light.primary;
+              UIs.primaryColor = light.primary;
             } else if (!context.isDark && dark != null) {
-              primaryColor = dark.primary;
+              UIs.primaryColor = dark.primary;
             }
-            return _buildApp(light: lightTheme, dark: darkTheme);
+            return _buildApp(context, light: lightTheme, dark: darkTheme);
           },
         );
       },
     );
   }
 
-  Widget _buildApp({ThemeData? light, ThemeData? dark}) {
+  Widget _buildApp(BuildContext ctx, {ThemeData? light, ThemeData? dark}) {
     final tMode = Stores.setting.themeMode.fetch();
     // Issue #57
     final themeMode = switch (tMode) {
@@ -60,45 +60,44 @@ class MyApp extends StatelessWidget {
 
     light ??= ThemeData(
       useMaterial3: true,
-      colorSchemeSeed: primaryColor,
+      colorSchemeSeed: UIs.colorSeed,
     );
     dark ??= ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      colorSchemeSeed: primaryColor,
+      colorSchemeSeed: UIs.colorSeed,
     );
 
     return MaterialApp(
       locale: locale,
-      localizationsDelegates: S.localizationsDelegates,
-      supportedLocales: S.supportedLocales,
+      localizationsDelegates: const [
+        LibLocalizations.delegate,
+        ...AppLocalizations.localizationsDelegates,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      localeListResolutionCallback: LocaleUtil.resolve,
       title: BuildData.name,
       themeMode: themeMode,
       theme: light,
-      darkTheme: tMode < 3 ? dark : _getAmoledTheme(dark),
-      home: Stores.setting.fullScreen.fetch()
-          ? const FullScreenPage()
-          : const HomePage(),
+      darkTheme: tMode < 3 ? dark : dark.toAmoled,
+      home: Builder(
+        builder: (context) {
+          context.setLibL10n();
+          final appL10n = AppLocalizations.of(context);
+          if (appL10n != null) l10n = appL10n;
+
+          final intros = _IntroPage.builders;
+          if (intros.isNotEmpty) {
+            return _IntroPage(intros);
+          }
+
+          return const HomePage();
+        },
+      ),
     );
   }
 }
 
 void _setup(BuildContext context) async {
-  setTransparentNavigationBar(context);
-  Analysis.init();
+  SystemUIs.setTransparentNavigationBar(context);
 }
-
-ThemeData _getAmoledTheme(ThemeData darkTheme) => darkTheme.copyWith(
-      scaffoldBackgroundColor: Colors.black,
-      dialogBackgroundColor: Colors.black,
-      drawerTheme: const DrawerThemeData(backgroundColor: Colors.black),
-      appBarTheme: const AppBarTheme(backgroundColor: Colors.black),
-      dialogTheme: const DialogTheme(backgroundColor: Colors.black),
-      bottomSheetTheme:
-          const BottomSheetThemeData(backgroundColor: Colors.black),
-      listTileTheme: const ListTileThemeData(tileColor: Colors.transparent),
-      cardTheme: const CardTheme(color: Colors.black12),
-      navigationBarTheme:
-          const NavigationBarThemeData(backgroundColor: Colors.black),
-      popupMenuTheme: const PopupMenuThemeData(color: Colors.black),
-    );

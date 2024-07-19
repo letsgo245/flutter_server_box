@@ -1,22 +1,15 @@
 import 'dart:io';
 
 import 'package:computer/computer.dart';
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:toolbox/core/extension/context/common.dart';
-import 'package:toolbox/core/extension/context/dialog.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/extension/context/snackbar.dart';
-import 'package:toolbox/core/extension/numx.dart';
-import 'package:toolbox/core/utils/misc.dart';
-import 'package:toolbox/data/res/misc.dart';
-import 'package:toolbox/data/res/provider.dart';
-import 'package:toolbox/view/widget/input_field.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/data/res/misc.dart';
+import 'package:server_box/data/res/provider.dart';
 
 import '../../../core/utils/server.dart';
 import '../../../data/model/server/private_key_info.dart';
-import '../../../data/res/ui.dart';
-import '../../widget/appbar.dart';
 
 const _format = 'text/plain';
 
@@ -26,7 +19,7 @@ class PrivateKeyEditPage extends StatefulWidget {
   final PrivateKeyInfo? pki;
 
   @override
-  _PrivateKeyEditPageState createState() => _PrivateKeyEditPageState();
+  State<PrivateKeyEditPage> createState() => _PrivateKeyEditPageState();
 }
 
 class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
@@ -39,7 +32,7 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
 
   late FocusScopeNode _focusScope;
 
-  Widget? _loading;
+  final _loading = ValueNotifier<Widget?>(null);
 
   @override
   void initState() {
@@ -90,7 +83,7 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
         tooltip: l10n.delete,
         onPressed: () {
           context.showRoundDialog(
-            title: Text(l10n.attention),
+            title: l10n.attention,
             child: Text(l10n.askContinue(
               '${l10n.delete} ${l10n.privateKey}(${widget.pki!.id})',
             )),
@@ -118,21 +111,23 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
     );
   }
 
+  String _standardizeLineSeparators(String value) {
+    return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+  }
+
   Widget _buildFAB() {
     return FloatingActionButton(
       tooltip: l10n.save,
       onPressed: () async {
         final name = _nameController.text;
-        final key = _keyController.text.trim();
+        final key = _standardizeLineSeparators(_keyController.text.trim());
         final pwd = _pwdController.text;
         if (name.isEmpty || key.isEmpty) {
           context.showSnackBar(l10n.fieldMustNotEmpty);
           return;
         }
         FocusScope.of(context).unfocus();
-        setState(() {
-          _loading = UIs.centerSizedLoading;
-        });
+        _loading.value = UIs.centerSizedLoading;
         try {
           final decrypted = await Computer.shared.start(decyptPem, [key, pwd]);
           final pki = PrivateKeyInfo(id: name, key: decrypted);
@@ -145,9 +140,7 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
           context.showSnackBar(e.toString());
           rethrow;
         } finally {
-          setState(() {
-            _loading = null;
-          });
+          _loading.value = null;
         }
         context.pop();
       },
@@ -180,7 +173,7 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
         ),
         TextButton(
           onPressed: () async {
-            final path = await pickOneFile();
+            final path = await Pfs.pickFilePath();
             if (path == null) return;
 
             final file = File(path);
@@ -201,11 +194,8 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
             }
 
             final content = await file.readAsString();
-
-            /// Issue #7
-            /// Replace all CRLF to LF
-            content.replaceAll('\r\n', '\n');
-            _keyController.text = content;
+            // dartssh2 accepts only LF (but not CRLF or CR)
+            _keyController.text = _standardizeLineSeparators(content.trim());
           },
           child: Text(l10n.pickFile),
         ),
@@ -218,7 +208,10 @@ class _PrivateKeyEditPageState extends State<PrivateKeyEditPage> {
           icon: Icons.password,
         ),
         SizedBox(height: MediaQuery.of(context).size.height * 0.1),
-        _loading ?? UIs.placeholder,
+        ValBuilder(
+          listenable: _loading,
+          builder: (val) => val ?? UIs.placeholder,
+        ),
       ],
     );
   }

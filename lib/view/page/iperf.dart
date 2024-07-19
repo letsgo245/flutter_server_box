@@ -1,10 +1,8 @@
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/extension/context/snackbar.dart';
-import 'package:toolbox/core/route.dart';
-import 'package:toolbox/data/model/server/server_private_info.dart';
-import 'package:toolbox/view/widget/appbar.dart';
-import 'package:toolbox/view/widget/input_field.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/core/route.dart';
+import 'package:server_box/data/model/server/server_private_info.dart';
 
 class IPerfPage extends StatefulWidget {
   final ServerPrivateInfo spi;
@@ -38,7 +36,7 @@ class _IPerfPageState extends State<IPerfPage> {
           context.showSnackBar(l10n.fieldMustNotEmpty);
           return;
         }
-        AppRoute.ssh(
+        AppRoutes.ssh(
           spi: widget.spi,
           initCmd: 'iperf -c ${_hostCtrl.text} -p ${_portCtrl.text}',
         ).go(context);

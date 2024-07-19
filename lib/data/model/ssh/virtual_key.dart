@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
+import 'package:server_box/core/extension/context/locale.dart';
 import 'package:xterm/core.dart';
 
 part 'virtual_key.g.dart';
@@ -54,6 +54,23 @@ enum VirtKey {
     }
   }
 
+  static final defaultOrder = [
+    VirtKey.esc,
+    VirtKey.alt,
+    VirtKey.home,
+    VirtKey.up,
+    VirtKey.end,
+    VirtKey.sftp,
+    VirtKey.snippet,
+    VirtKey.tab,
+    VirtKey.ctrl,
+    VirtKey.left,
+    VirtKey.down,
+    VirtKey.right,
+    VirtKey.clipboard,
+    VirtKey.ime,
+  ];
+
   TerminalKey? get key {
     switch (this) {
       case VirtKey.esc:
@@ -102,7 +119,7 @@ enum VirtKey {
       case VirtKey.clipboard:
         return Icons.paste;
       case VirtKey.ime:
-        return Icons.keyboard_hide;
+        return Icons.keyboard;
       default:
         return null;
     }
@@ -148,16 +165,12 @@ enum VirtKey {
     }
   }
 
-  String? get help {
-    switch (this) {
-      case VirtKey.sftp:
-        return l10n.virtKeyHelpSFTP;
-      case VirtKey.clipboard:
-        return l10n.virtKeyHelpClipboard;
-      default:
-        return null;
-    }
-  }
+  String? get help => switch (this) {
+        VirtKey.sftp => l10n.virtKeyHelpSFTP,
+        VirtKey.clipboard => l10n.virtKeyHelpClipboard,
+        VirtKey.ime => l10n.virtKeyHelpIME,
+        _ => null,
+      };
 }
 
 enum VirtualKeyFunc { toggleIME, backspace, clipboard, snippet, file }

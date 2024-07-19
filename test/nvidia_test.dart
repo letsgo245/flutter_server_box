@@ -1,6 +1,7 @@
-import 'package:flutter/foundation.dart';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:toolbox/data/model/server/nvdia.dart';
+import 'package:server_box/data/model/server/nvdia.dart';
 
 const _raw = '''
 <?xml version="1.0" ?>
@@ -841,8 +842,36 @@ const _raw = '''
 
 void main() {
   test('nvdia-smi', () {
-    if (kDebugMode) {
-      print(NvidiaSmi.fromXml(_raw).firstOrNull?.memory.processes);
-    }
+    final items = NvidiaSmi.fromXml(_raw);
+    expect(items.length, 1);
+    final item = items[0];
+    expect(item.name, 'NVIDIA GeForce RTX 3080 Ti');
+    expect(item.temp, 34);
+    expect(item.power, '24.55 W / 350.00 W');
+    expect(item.memory.total, 12288);
+    expect(item.memory.used, 352);
+    expect(item.memory.unit, 'MiB');
+    final processes = item.memory.processes;
+    expect(processes.length, 3);
+    expect(processes[0].pid, 1575);
+    expect(processes[0].name, '/usr/lib/xorg/Xorg');
+    expect(processes[0].memory, 220);
+    expect(processes[1].pid, 1933);
+    expect(processes[1].name, '/usr/bin/gnome-shell');
+    expect(processes[1].memory, 34);
+    expect(processes[2].pid, 16484);
+    expect(processes[2].memory, 76);
+  });
+
+  test('nvidia-smi with N/A', () async {
+    final raw = await File('test/nvidia.xml').readAsString();
+    final items = NvidiaSmi.fromXml(raw);
+    expect(items.length, 4);
+  });
+
+  test('nvidia-smi 2', () async {
+    final raw = await File('test/nvidia2.xml').readAsString();
+    final items = NvidiaSmi.fromXml(raw);
+    expect(items.length, 1);
   });
 }

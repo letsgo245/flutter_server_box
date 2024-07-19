@@ -1,27 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:computer/computer.dart';
+import 'package:fl_lib/fl_lib.dart';
 import 'package:flutter/material.dart';
-import 'package:toolbox/core/extension/context/common.dart';
-import 'package:toolbox/core/extension/context/dialog.dart';
-import 'package:toolbox/core/extension/context/locale.dart';
-import 'package:toolbox/core/extension/context/snackbar.dart';
-import 'package:toolbox/core/extension/datetime.dart';
-import 'package:toolbox/core/utils/misc.dart';
-import 'package:toolbox/core/utils/sync/icloud.dart';
-import 'package:toolbox/core/utils/platform/base.dart';
-import 'package:toolbox/core/utils/share.dart';
-import 'package:toolbox/core/utils/sync/webdav.dart';
-import 'package:toolbox/data/model/app/backup.dart';
-import 'package:toolbox/data/res/logger.dart';
-import 'package:toolbox/data/res/path.dart';
-import 'package:toolbox/data/res/store.dart';
-import 'package:toolbox/data/res/ui.dart';
-import 'package:toolbox/view/widget/appbar.dart';
-import 'package:toolbox/view/widget/expand_tile.dart';
-import 'package:toolbox/view/widget/cardx.dart';
-import 'package:toolbox/view/widget/input_field.dart';
-import 'package:toolbox/view/widget/store_switch.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:server_box/core/extension/context/locale.dart';
+import 'package:server_box/core/utils/sync/icloud.dart';
+import 'package:server_box/core/utils/sync/webdav.dart';
+import 'package:server_box/data/model/app/backup.dart';
+import 'package:server_box/data/model/server/server_private_info.dart';
+import 'package:server_box/data/res/misc.dart';
+import 'package:server_box/data/res/store.dart';
+import 'package:server_box/data/res/url.dart';
 
 class BackupPage extends StatelessWidget {
   BackupPage({super.key});
@@ -48,6 +39,7 @@ class BackupPage extends StatelessWidget {
         _buildWebdav(context),
         _buildFile(context),
         _buildClipboard(context),
+        _buildBulkImportServers(context),
       ],
     );
   }
@@ -74,13 +66,7 @@ class BackupPage extends StatelessWidget {
             trailing: const Icon(Icons.save),
             onTap: () async {
               final path = await Backup.backup();
-
-              /// Issue #188
-              if (isWindows) {
-                await Shares.text(await File(path).readAsString());
-              } else {
-                await Shares.files([path]);
-              }
+              await Pfs.share(path: path);
             },
           ),
           ListTile(
@@ -200,7 +186,7 @@ class BackupPage extends StatelessWidget {
             trailing: const Icon(Icons.save),
             onTap: () async {
               final path = await Backup.backup();
-              Shares.copy(await File(path).readAsString());
+              Pfs.copy(await File(path).readAsString());
               context.showSnackBar(l10n.success);
             },
           ),
@@ -214,33 +200,38 @@ class BackupPage extends StatelessWidget {
     );
   }
 
+  Widget _buildBulkImportServers(BuildContext context) {
+    return CardX(
+      child: ListTile(
+        title: Text(l10n.bulkImportServers),
+        subtitle: SimpleMarkdown(
+          data: l10n.bulkImportServersTip(Urls.appWiki),
+          styleSheet: MarkdownStyleSheet(
+            p: UIs.textGrey,
+          ),
+        ),
+        leading: const Icon(Icons.import_export),
+        onTap: () => _onBulkImportServers(context),
+        trailing: const Icon(Icons.keyboard_arrow_right),
+      ),
+    );
+  }
+
   Future<void> _onTapFileRestore(BuildContext context) async {
-    final path = await pickOneFile();
-    if (path == null) return;
-
-    final file = File(path);
-    if (!await file.exists()) {
-      context.showSnackBar(l10n.fileNotExist(path));
-      return;
-    }
-
-    final text = await file.readAsString();
-    if (text.isEmpty) {
-      context.showSnackBar(l10n.fieldMustNotEmpty);
-      return;
-    }
+    final text = await Pfs.pickFileString();
+    if (text == null) return;
 
     try {
-      context.showLoadingDialog();
-      final backup =
-          await Computer.shared.start(Backup.fromJsonString, text.trim());
+      final backup = await context.showLoadingDialog(
+        fn: () => Computer.shared.start(Backup.fromJsonString, text.trim()),
+      );
       if (backupFormatVersion != backup.version) {
         context.showSnackBar(l10n.backupVersionNotMatch);
         return;
       }
 
       await context.showRoundDialog(
-        title: Text(l10n.restore),
+        title: l10n.restore,
         child: Text(l10n.askContinue(
           '${l10n.restore} ${l10n.backup}(${backup.date})',
         )),
@@ -258,103 +249,79 @@ class BackupPage extends StatelessWidget {
           ),
         ],
       );
-    } catch (e, trace) {
-      Loggers.app.warning('Import backup failed', e, trace);
-      context.showSnackBar(e.toString());
-    } finally {
-      context.pop();
+    } catch (e, s) {
+      Loggers.app.warning('Import backup failed', e, s);
+      context.showErrDialog(e: e, s: s, operation: l10n.restore);
     }
   }
 
   Future<void> _onTapWebdavDl(BuildContext context) async {
     webdavLoading.value = true;
-    final files = await Webdav.list();
-    if (files.isEmpty) {
-      context.showSnackBar(l10n.dirEmpty);
-      webdavLoading.value = false;
-      return;
-    }
+    try {
+      final files = await Webdav.list();
+      if (files.isEmpty) return context.showSnackBar(l10n.dirEmpty);
 
-    final fileName = await context.showRoundDialog<String>(
-      title: Text(l10n.restore),
-      child: SizedBox(
-        width: 300,
-        height: 300,
-        child: ListView.builder(
-          itemCount: files.length,
-          itemBuilder: (_, index) {
-            final file = files[index];
-            return ListTile(
-              title: Text(file),
-              onTap: () => context.pop(file),
-            );
-          },
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => context.pop(),
-          child: Text(l10n.cancel),
-        ),
-      ],
-    );
-    if (fileName == null) {
-      webdavLoading.value = false;
-      return;
-    }
+      final fileName = await context.showPickSingleDialog(
+        title: l10n.restore,
+        items: files,
+      );
+      if (fileName == null) return;
 
-    final result = await Webdav.download(relativePath: fileName);
-    if (result != null) {
-      Loggers.app.warning('Download webdav backup failed: $result');
+      final result = await Webdav.download(relativePath: fileName);
+      if (result != null) {
+        throw result;
+      }
+      final dlFile = await File('${Paths.doc}/$fileName').readAsString();
+      final dlBak = await Computer.shared.start(Backup.fromJsonString, dlFile);
+      await dlBak.restore(force: true);
+    } catch (e, s) {
+      context.showErrDialog(e: e, s: s, operation: l10n.restore);
+      Loggers.app.warning('Download webdav backup failed', e, s);
+    } finally {
       webdavLoading.value = false;
-      return;
     }
-    final dlFile = await File('${await Paths.doc}/$fileName').readAsString();
-    final dlBak = await Computer.shared.start(Backup.fromJsonString, dlFile);
-    await dlBak.restore(force: true);
-    webdavLoading.value = false;
   }
 
   Future<void> _onTapWebdavUp(BuildContext context) async {
     webdavLoading.value = true;
-    final bakName = '${DateTime.now().numStr}-${Paths.bakName}';
-    await Backup.backup(bakName);
-    final uploadResult = await Webdav.upload(relativePath: bakName);
-    if (uploadResult != null) {
-      Loggers.app.warning('Upload webdav backup failed: $uploadResult');
-    } else {
+    final date = DateTime.now().ymdhms(ymdSep: "-", hmsSep: "-", sep: "-");
+    final bakName = '$date-${Miscs.bakFileName}';
+    try {
+      await Backup.backup(bakName);
+      final uploadResult = await Webdav.upload(relativePath: bakName);
+      if (uploadResult != null) {
+        throw uploadResult;
+      }
       Loggers.app.info('Upload webdav backup success');
+    } catch (e, s) {
+      context.showErrDialog(e: e, s: s, operation: l10n.upload);
+      Loggers.app.warning('Upload webdav backup failed', e, s);
+    } finally {
+      webdavLoading.value = false;
     }
-    webdavLoading.value = false;
   }
 
   Future<void> _onTapWebdavSetting(BuildContext context) async {
-    final urlCtrl = TextEditingController(
-      text: Stores.setting.webdavUrl.fetch(),
-    );
-    final userCtrl = TextEditingController(
-      text: Stores.setting.webdavUser.fetch(),
-    );
-    final pwdCtrl = TextEditingController(
-      text: Stores.setting.webdavPwd.fetch(),
-    );
+    final url = TextEditingController(text: Stores.setting.webdavUrl.fetch());
+    final user = TextEditingController(text: Stores.setting.webdavUser.fetch());
+    final pwd = TextEditingController(text: Stores.setting.webdavPwd.fetch());
     final result = await context.showRoundDialog<bool>(
-      title: const Text('WebDAV'),
+      title: 'WebDAV',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Input(
             label: 'URL',
             hint: 'https://example.com/webdav/',
-            controller: urlCtrl,
+            controller: url,
           ),
           Input(
             label: l10n.user,
-            controller: userCtrl,
+            controller: user,
           ),
           Input(
             label: l10n.pwd,
-            controller: pwdCtrl,
+            controller: pwd,
           ),
         ],
       ),
@@ -368,36 +335,35 @@ class BackupPage extends StatelessWidget {
       ],
     );
     if (result == true) {
-      final result =
-          await Webdav.test(urlCtrl.text, userCtrl.text, pwdCtrl.text);
-      if (result == null) {
-        context.showSnackBar(l10n.success);
-      } else {
+      final result = await Webdav.test(url.text, user.text, pwd.text);
+      if (result != null) {
         context.showSnackBar(result);
         return;
       }
-      Webdav.changeClient(urlCtrl.text, userCtrl.text, pwdCtrl.text);
+      context.showSnackBar(l10n.success);
+      Webdav.changeClient(url.text, user.text, pwd.text);
     }
   }
 
   void _onTapClipboardRestore(BuildContext context) async {
-    final text = await Shares.paste();
+    final text = await Pfs.paste();
     if (text == null || text.isEmpty) {
       context.showSnackBar(l10n.fieldMustNotEmpty);
       return;
     }
 
     try {
-      context.showLoadingDialog();
-      final backup =
-          await Computer.shared.start(Backup.fromJsonString, text.trim());
+      final backup = await context.showLoadingDialog(
+        fn: () => Computer.shared.start(Backup.fromJsonString, text.trim()),
+      );
+
       if (backupFormatVersion != backup.version) {
         context.showSnackBar(l10n.backupVersionNotMatch);
         return;
       }
 
       await context.showRoundDialog(
-        title: Text(l10n.restore),
+        title: l10n.restore,
         child: Text(l10n.askContinue(
           '${l10n.restore} ${l10n.backup}(${backup.date})',
         )),
@@ -415,11 +381,46 @@ class BackupPage extends StatelessWidget {
           ),
         ],
       );
-    } catch (e, trace) {
-      Loggers.app.warning('Import backup failed', e, trace);
-      context.showSnackBar(e.toString());
-    } finally {
-      context.pop();
+    } catch (e, s) {
+      Loggers.app.warning('Import backup failed', e, s);
+      context.showErrDialog(e: e, s: s, operation: l10n.restore);
+    }
+  }
+
+  void _onBulkImportServers(BuildContext context) async {
+    final text = await Pfs.pickFileString();
+    if (text == null) return;
+
+    try {
+      final spis = await context.showLoadingDialog(
+        fn: () => Computer.shared.start((val) {
+          final list = json.decode(val) as List;
+          return list.map((e) => ServerPrivateInfo.fromJson(e)).toList();
+        }, text.trim()),
+      );
+      final sure = await context.showRoundDialog<bool>(
+        title: l10n.import,
+        child: Text(l10n.askContinue('${spis.length} ${l10n.server}')),
+        actions: [
+          TextButton(
+            onPressed: () => context.pop(true),
+            child: Text(l10n.ok),
+          ),
+        ],
+      );
+      if (sure == true) {
+        await context.showLoadingDialog(
+          fn: () async {
+            for (var spi in spis) {
+              Stores.server.put(spi);
+            }
+          },
+        );
+        context.showSnackBar(l10n.success);
+      }
+    } catch (e, s) {
+      context.showErrDialog(e: e, s: s, operation: l10n.import);
+      Loggers.app.warning('Import servers failed', e, s);
     }
   }
 }

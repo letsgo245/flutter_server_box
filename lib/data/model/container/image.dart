@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:toolbox/core/extension/numx.dart';
-import 'package:toolbox/data/model/container/type.dart';
+import 'package:fl_lib/fl_lib.dart';
+import 'package:server_box/data/model/container/type.dart';
 
 abstract final class ContainerImg {
   final String? repository = null;
@@ -72,7 +72,7 @@ final class DockerImg implements ContainerImg {
   final String repository;
   final String size;
   @override
-  final String tag;
+  final String? tag;
 
   DockerImg({
     required this.containers,
@@ -95,14 +95,30 @@ final class DockerImg implements ContainerImg {
 
   String toRawJson() => json.encode(toJson());
 
-  factory DockerImg.fromJson(Map<String, dynamic> json) => DockerImg(
-        containers: json["Containers"],
-        createdAt: json["CreatedAt"],
-        id: json["ID"],
-        repository: json["Repository"],
-        size: json["Size"],
-        tag: json["Tag"],
-      );
+  factory DockerImg.fromJson(Map<String, dynamic> json) {
+    final containers = switch (json["Containers"]) {
+      final String a => a,
+      final Object? a => a.toString(),
+    };
+    final repo = switch (json["Repository"] ?? json["Names"]) {
+      final String a => a,
+      final List a => a.firstOrNull.toString(),
+      final Object? a => a.toString(),
+    };
+    final size = switch (json["Size"]) {
+      final String a => a,
+      final int a => a.bytes2Str,
+      final Object? a => a.toString(),
+    };
+    return DockerImg(
+      containers: containers,
+      createdAt: json["CreatedAt"],
+      id: json["ID"] ?? json["Id"] ?? '',
+      repository: repo,
+      size: size,
+      tag: json["Tag"],
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         "Containers": containers,
